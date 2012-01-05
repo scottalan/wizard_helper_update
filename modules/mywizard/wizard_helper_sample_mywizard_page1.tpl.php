@@ -1,0 +1,3 @@
+<?php print drupal_render($form['ctools_trail']); ?>
+Here you can theme your wizard page to look like anything...
+<?php print drupal_render($form); ?>

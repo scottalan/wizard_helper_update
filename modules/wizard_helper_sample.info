@@ -1,0 +1,7 @@
+; $Id$
+name = CTools Wizard Helper Sample Module
+description = A sample module that shows you how to use the CTools Helper.
+dependencies[] = wizard_helper
+package = "CTools Helpers"
+version = "0.2.0"
+core= 6.x

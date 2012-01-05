@@ -1,0 +1,263 @@
+<?php
+/**
+ * This module works to help reduce code complexity and increase code reuse by
+ * using a hook system to define your CTools wizard.  Here is how to use this module.
+ *
+ * Within you module, implement hook_wizard_info, which should return the following.
+ *
+ * function hook_wizard_info
+ */
+
+/**
+ * Returns the wizard information.
+ */
+function wizard_helper_info() {
+  static $info = array();
+  if (!$info) {
+    if ($cache = cache_get('wizard_helper_info')) {
+      $info = $cache->data;
+    }
+    else {
+      $info = array();
+
+      // Get the wizard information from other modules.
+      foreach (module_implements('wizard_info') as $module) {
+        $function = $module .'_wizard_info';
+        $result = $function();
+        foreach ($result as $path => &$value) {
+          $value['module'] = $module;
+          $value['id'] = isset($value['id']) ? $value['id'] : str_replace('/', '_', $path);
+          $value['title'] = isset($value['title']) ? $value['title'] : '';
+          $value['access callback'] = isset($value['access callback']) ? $value['access callback'] : 'user_access';
+          $value['access arguments'] = isset($value['access arguments']) ? $value['access arguments'] : array('access content');
+          $value['title'] = isset($value['title']) ? $value['title'] : '';
+          $value['path'] = isset($value['path']) ? $value['path'] : drupal_get_path('module', $info['module']) . '/' . $value['id'];
+          $value['form id'] = isset($value['form id']) ? $value['form id'] : $value['module'] . '_' . $value['id'];
+          $value['object name'] = isset($value['object name']) ? $value['object name'] : $value['form id'];
+          $value['show trail'] = isset($value['show trail']) ? $value['show trail'] : TRUE;
+          $value['show back'] = isset($value['show back']) ? $value['show back'] : TRUE;
+          $value['show cancel'] = isset($value['show cancel']) ? $value['show cancel'] : TRUE;
+          $value['show return'] = isset($value['show return']) ? $value['show return'] : FALSE;
+          $value['next text'] = isset($value['next text']) ? $value['next text'] : t('Next');
+          $value['cancel message'] = isset($value['cancel message']) ? $value['cancel message'] : t('No changes have been made');
+        }
+        $info = array_merge($info, $function());
+      }
+
+      // Allow others to alter the information.
+      drupal_alter('wizard_info', $info);
+
+      // Set this in cache.
+      cache_set('wizard_helper_info', $info);
+    }
+  }
+  return $info;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function wizard_helper_menu() {
+  $info = wizard_helper_info();
+  foreach ($info as $path => $wizard) {
+    $parts = explode('/', $path);
+    $index = count($parts);
+    $items[$path . '/%ctools_js'] = array(
+      'title' => $wizard['title'],
+      'page callback' => 'wizard_helper_wizard',
+      'page arguments' => array($index, ($index + 1)),
+      'access callback' => $wizard['access callback'],
+      'access arguments' => $wizard['access arguments'],
+      'type' => MENU_CALLBACK,
+    );
+  }
+  return $info;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function wizard_helper_theme() {
+  $themes = array();
+
+  // Get the wizard information.
+  $info = wizard_helper_info();
+
+  // Iterate through all wizards.
+  foreach ($info as $path => $wizard) {
+
+    // Get all the wizard helper page ids.
+    foreach( wizard_helper_page_ids($info) as $page => $id ) {
+
+      // Check to make sure the template exists.
+      $template = getcwd() . '/' . $info['path'] . '/' . $id . '.tpl.php';
+      if (file_exists($template)) {
+        $themes[$id] = array(
+          'template'  => $id,
+          'path' => $info['path'],
+          'arguments' => array('form' => NULL )
+        );
+      }
+    }
+  }
+
+  // Return the themes.
+  return $themes;
+}
+
+/**
+ * array_walk function to get the unique page id.
+ *
+ * @param string $value
+ * @param type $id
+ * @param type $form_id
+ */
+function wizard_helper_page_id(&$value, $id, $form_id) {
+  $value = $form_id . '_' . $id;
+}
+
+/**
+ * Get the page ids.
+ *
+ * @param type $info
+ */
+function wizard_helper_page_ids($info) {
+  $ids = $info['pages'];
+  array_walk($ids, 'wizard_helper_page_id', $info['form id']);
+  return $ids;
+}
+
+/**
+ * Wizard callback function.
+ */
+function wizard_helper_wizard($js = NULL, $step = NULL) {
+  // Get the path to retrieve the wizard info.
+  $args = arg();
+  if ($step !== NULL) {
+    array_pop($args);
+  }
+  if ($js !== NULL) {
+    array_pop($args);
+  }
+  $path = implode('/', $args);
+
+  // Get the wizard info.
+  $info = wizard_helper_info();
+  if ($info = $info[$path]) {
+
+    // Call the wizard callback to alter the info at runtime.
+    if (isset($info['wizard callback'])) {
+      $function = $info['wizard callback'];
+      $function($info);
+    }
+
+    // Include the ctools wizard stuff.
+    ctools_include('wizard');
+    ctools_include('ajax');
+
+    // Set the initial form state.
+    $form_state = array(
+      'title' => $info['title'],
+      'ajax' => $js
+    );
+
+    // Get the cached object.
+    $form_state[$info['object name']] = wizard_helper_cache_get();
+
+    // Set the pages.
+    $pages = $info['pages'];
+
+    // Set all the pages for this wizard.
+    $forms = array();
+    foreach( wizard_helper_page_ids($info) as $page => $id ) {
+      $forms[$page] = array(
+        'form id' => $id,
+        'include' => $info['path'] . '/' . $id . '.inc'
+      );
+    }
+
+    // Setup our CTools multistep form.
+    $form_info = array(
+      'id' => $info['form id'],
+      'path' => $path . "/" . ($js ? 'ajax' : 'nojs') . "/%step",
+      'show trail' => $info['show trail'],
+      'show back' => $info['show back'],
+      'show cancel' => $info['show cancel'],
+      'show return' => $info['show return'],
+      'next text' => $info['next text'],
+      'next callback' =>  'wizard_helper_next',
+      'finish callback' => 'wizard_helper_finish',
+      'return callback' => 'wizard_helper_finish',
+      'cancel callback' => 'wizard_helper_cancel',
+      'order' => $pages,
+      'forms' => $forms,
+    );
+
+    // Create our multistep drupal form.
+    $step = $step ? $step : $pages[0];
+    return ctools_wizard_multistep_form($form_info, $step, $form_state);
+  }
+
+  // Return 404 if we cannot find the information.
+  drupal_not_found();
+}
+
+/**
+ * Set the object cache.
+ */
+function wizard_helper_cache_set($value) {
+  global $user;
+  ctools_include('object-cache');
+  $info = wizard_helper_info();
+  ctools_object_cache_set($info['object name'], $user->sid, $value);
+}
+
+/**
+ * Get the object cache.
+ */
+function wizard_helper_cache_get() {
+  global $user;
+  ctools_include('object-cache');
+  $info = wizard_helper_info();
+  return ctools_object_cache_get($info['object name'], $user->sid);
+}
+
+/**
+ * Clear the object cache.
+ */
+function wizard_helper_cache_clear() {
+  global $user;
+  ctools_include('object-cache');
+  $info = wizard_helper_info();
+  ctools_object_cache_clear($info['object name'], $user->sid);
+}
+
+/**
+ * Callback for the proceed step
+ */
+function wizard_helper_next(&$form_state) {
+  $info = wizard_helper_info();
+  wizard_helper_cache_set($form_state[$info['object name']]);
+}
+
+/**
+ * Callback generated when the wizard is finished.
+ */
+function wizard_helper_finish(&$form_state) {
+  $info = wizard_helper_info();
+  wizard_helper_cache_clear();
+  $function = $info['form id'] . '_finish';
+  if (function_exists($function)) {
+    $function($form_state);
+  }
+}
+
+/**
+ * Callback for the cancel.
+ */
+function wizard_helper_cancel(&$form_state) {
+  wizard_helper_cache_clear();
+  $info = wizard_helper_info();
+  drupal_set_message($info['cancel message']);
+  $form_state['cancel'] = TRUE;
+}
