@@ -92,11 +92,11 @@ function wizard_helper_theme() {
     foreach( wizard_helper_page_ids($wizard) as $page => $id ) {
 
       // Check to make sure the template exists.
-      $template = getcwd() . '/' . $info['path'] . '/' . $id . '.tpl.php';
+      $template = getcwd() . '/' . $wizard['path'] . '/' . $id . '.tpl.php';
       if (file_exists($template)) {
         $themes[$id] = array(
           'template'  => $id,
-          'path' => $info['path'],
+          'path' => $wizard['path'],
           'arguments' => array('form' => NULL )
         );
       }
