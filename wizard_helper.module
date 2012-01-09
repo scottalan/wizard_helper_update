@@ -42,6 +42,7 @@ function wizard_helper_info() {
           $wizard['next text'] = isset($wizard['next text']) ? $wizard['next text'] : t('Next');
           $wizard['cancel message'] = isset($wizard['cancel message']) ? $wizard['cancel message'] : t('No changes have been made');
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
+          $wizard['access'] = TRUE;
 
           // Iterate though the pages and assign page ids.
           foreach ($wizard['pages'] as $page => $title) {
@@ -139,6 +140,23 @@ function wizard_helper_wizard($js = '', $step = '') {
     if (isset($wizard['wizard callback'])) {
       $function = $wizard['wizard callback'];
       $function($wizard);
+    }
+
+    // Make sure there are pages.
+    if (!$wizard['pages']) {
+      drupal_not_found();
+      return;
+    }
+
+    // Make sure we have access.
+    if (!$wizard['access']) {
+      drupal_access_denied();
+      return;
+    }
+
+    // If there is already output, then return it here.
+    if ($wizard['output']) {
+      return $wizard['output'];
     }
 
     // Include the ctools wizard stuff.
