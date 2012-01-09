@@ -24,22 +24,31 @@ function wizard_helper_info() {
       foreach (module_implements('wizard_info') as $module) {
         $function = $module .'_wizard_info';
         $result = $function();
-        foreach ($result as $path => &$value) {
-          $value['module'] = $module;
-          $value['id'] = isset($value['id']) ? $value['id'] : str_replace('/', '_', $path);
-          $value['title'] = isset($value['title']) ? $value['title'] : '';
-          $value['access callback'] = isset($value['access callback']) ? $value['access callback'] : 'user_access';
-          $value['access arguments'] = isset($value['access arguments']) ? $value['access arguments'] : array('access content');
-          $value['title'] = isset($value['title']) ? $value['title'] : '';
-          $value['path'] = isset($value['path']) ? $value['path'] : drupal_get_path('module', $info['module']) . '/' . $value['id'];
-          $value['form id'] = isset($value['form id']) ? $value['form id'] : $value['module'] . '_' . $value['id'];
-          $value['object name'] = isset($value['object name']) ? $value['object name'] : $value['form id'];
-          $value['show trail'] = isset($value['show trail']) ? $value['show trail'] : TRUE;
-          $value['show back'] = isset($value['show back']) ? $value['show back'] : TRUE;
-          $value['show cancel'] = isset($value['show cancel']) ? $value['show cancel'] : TRUE;
-          $value['show return'] = isset($value['show return']) ? $value['show return'] : FALSE;
-          $value['next text'] = isset($value['next text']) ? $value['next text'] : t('Next');
-          $value['cancel message'] = isset($value['cancel message']) ? $value['cancel message'] : t('No changes have been made');
+        foreach ($result as $path => &$wizard) {
+          $wizard['module'] = $module;
+          $wizard['id'] = isset($wizard['id']) ? $wizard['id'] : str_replace('/', '_', $path);
+          $wizard['pages'] = isset($wizard['pages']) ? $wizard['pages'] : array('error' => '');
+          $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
+          $wizard['access callback'] = isset($wizard['access callback']) ? $wizard['access callback'] : 'user_access';
+          $wizard['access arguments'] = isset($wizard['access arguments']) ? $wizard['access arguments'] : array('access content');
+          $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
+          $wizard['path'] = isset($wizard['path']) ? $wizard['path'] : drupal_get_path('module', $info['module']) . '/' . $wizard['id'];
+          $wizard['form id'] = isset($wizard['form id']) ? $wizard['form id'] : $wizard['module'] . '_' . $wizard['id'];
+          $wizard['object name'] = isset($wizard['object name']) ? $wizard['object name'] : $wizard['form id'];
+          $wizard['show trail'] = isset($wizard['show trail']) ? $wizard['show trail'] : TRUE;
+          $wizard['show back'] = isset($wizard['show back']) ? $wizard['show back'] : TRUE;
+          $wizard['show cancel'] = isset($wizard['show cancel']) ? $wizard['show cancel'] : TRUE;
+          $wizard['show return'] = isset($wizard['show return']) ? $wizard['show return'] : FALSE;
+          $wizard['next text'] = isset($wizard['next text']) ? $wizard['next text'] : t('Next');
+          $wizard['cancel message'] = isset($wizard['cancel message']) ? $wizard['cancel message'] : t('No changes have been made');
+          $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
+
+          // Iterate though the pages and assign page ids.
+          foreach ($wizard['pages'] as $page => $title) {
+            if (!isset($wizard['pageids'][$page])) {
+              $wizard['pageids'][$page] = $wizard['form id'] . '_' . $page;
+            }
+          }
         }
         $info = array_merge($info, $result);
       }
@@ -89,11 +98,12 @@ function wizard_helper_theme() {
   foreach ($info as $path => $wizard) {
 
     // Get all the wizard helper page ids.
-    foreach( wizard_helper_page_ids($wizard) as $page => $id ) {
+    foreach( $wizard['pageids'] as $page => $id ) {
 
-      // Check to make sure the template exists.
-      $template = getcwd() . '/' . $wizard['path'] . '/' . $id . '.tpl.php';
-      if (file_exists($template)) {
+      // Add the template if the file exists.
+      if (file_exists(getcwd() . '/' . $wizard['path'] . '/' . $id . '.tpl.php')) {
+
+        // Add the template.
         $themes[$id] = array(
           'template'  => $id,
           'path' => $wizard['path'],
@@ -105,30 +115,6 @@ function wizard_helper_theme() {
 
   // Return the themes.
   return $themes;
-}
-
-/**
- * array_walk function to get the unique page id.
- *
- * @param string $value
- * @param type $id
- * @param type $form_id
- */
-function wizard_helper_page_id(&$value, $id, $form_id) {
-  $value = $form_id . '_' . $id;
-}
-
-/**
- * Get the page ids.
- *
- * @param type $info
- */
-function wizard_helper_page_ids($wizard) {
-  $ids = array();
-  foreach ($wizard['pages'] as $page => $title) {
-    $ids[$page] = $wizard['form id'] . '_' . $page;
-  }
-  return $ids;
 }
 
 /**
@@ -176,7 +162,7 @@ function wizard_helper_wizard($js = '', $step = '') {
 
     // Set all the pages for this wizard.
     $forms = array();
-    foreach( wizard_helper_page_ids($wizard) as $page => $id ) {
+    foreach( $wizard['pageids'] as $page => $id ) {
       $forms[$page] = array(
         'form id' => $id,
         'include' => $wizard['path'] . '/' . $id . '.inc'
