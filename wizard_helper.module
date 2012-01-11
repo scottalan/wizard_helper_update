@@ -35,13 +35,9 @@ function wizard_helper_info() {
           $wizard['path'] = isset($wizard['path']) ? $wizard['path'] : drupal_get_path('module', $info['module']) . '/' . $wizard['id'];
           $wizard['form id'] = isset($wizard['form id']) ? $wizard['form id'] : $wizard['module'] . '_' . $wizard['id'];
           $wizard['object name'] = isset($wizard['object name']) ? $wizard['object name'] : $wizard['form id'];
-          $wizard['show trail'] = isset($wizard['show trail']) ? $wizard['show trail'] : TRUE;
-          $wizard['show back'] = isset($wizard['show back']) ? $wizard['show back'] : TRUE;
-          $wizard['show cancel'] = isset($wizard['show cancel']) ? $wizard['show cancel'] : TRUE;
-          $wizard['show return'] = isset($wizard['show return']) ? $wizard['show return'] : FALSE;
-          $wizard['next text'] = isset($wizard['next text']) ? $wizard['next text'] : t('Next');
-          $wizard['cancel message'] = isset($wizard['cancel message']) ? $wizard['cancel message'] : t('No changes have been made');
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
+          $wizard['cancel path'] = isset($wizard['cancel path']) ? $wizard['cancel path'] : $path;
+          $wizard['return path'] = isset($wizard['return path']) ? $wizard['return path'] : $path;
           $wizard['access'] = TRUE;
 
           // Iterate though the pages and assign page ids.
@@ -139,7 +135,7 @@ function wizard_helper_wizard($js = '', $step = '') {
     // Call the wizard callback to alter the info at runtime.
     if (isset($wizard['wizard callback'])) {
       $function = $wizard['wizard callback'];
-      $function($wizard);
+      $function($step, $wizard);
     }
 
     // Make sure there are pages.
@@ -191,18 +187,20 @@ function wizard_helper_wizard($js = '', $step = '') {
     $form_info = array(
       'id' => $wizard['form id'],
       'path' => $path . "/" . ($js ? 'ajax' : 'nojs') . "/%step",
-      'show trail' => $wizard['show trail'],
-      'show back' => $wizard['show back'],
-      'show cancel' => $wizard['show cancel'],
-      'show return' => $wizard['show return'],
-      'next text' => $wizard['next text'],
       'next callback' =>  'wizard_helper_next',
       'finish callback' => 'wizard_helper_finish',
       'return callback' => 'wizard_helper_finish',
       'cancel callback' => 'wizard_helper_cancel',
       'order' => $pages,
       'forms' => $forms,
+      'show trail' => TRUE,
+      'show back' => TRUE,
+      'show cancel' => TRUE,
+      'show return' => FALSE
     );
+
+    // Allow the wizard info to override.
+    $form_info = array_merge($form_info, $wizard);
 
     // Create our multistep drupal form.
     $step = $step ? $step : $pages[0];
