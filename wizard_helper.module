@@ -192,15 +192,23 @@ function wizard_helper_wizard($js = '', $step = '') {
       'return callback' => 'wizard_helper_finish',
       'cancel callback' => 'wizard_helper_cancel',
       'order' => $pages,
-      'forms' => $forms,
+      'forms' => $forms
+    );
+
+    // Setup the defaults for the wizard information.
+    $defaults = array(
       'show trail' => TRUE,
       'show back' => TRUE,
       'show cancel' => TRUE,
       'show return' => FALSE
     );
 
-    // Allow the wizard info to override.
-    $form_info = array_merge($form_info, $wizard);
+    // Add the defaults to the form, and then bring in those values from the
+    // wizard.
+    $form_info = array_merge(
+      array_merge($form_info, $defaults),
+      array_intersect_key($wizard, $defaults)
+    );
 
     // Create our multistep drupal form.
     $step = $step ? $step : $pages[0];
