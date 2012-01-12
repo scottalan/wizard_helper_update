@@ -115,6 +115,55 @@ function wizard_helper_theme() {
 }
 
 /**
+ * This function will include a form from the wizard_helper.
+ */
+function wizard_helper_include_form($form_id) {
+  // Get the wizard information.
+  $info = wizard_helper_info();
+  foreach ($info as $path => $wizard) {
+    foreach( $wizard['pageids'] as $page => $id ) {
+      if ($id == $form_id) {
+        require_once $wizard['path'] . '/' . $id . '.inc';
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_forms
+ */
+function wizard_helper_forms($form_id, $args) {
+  $forms = array();
+  $info = wizard_helper_info();
+  foreach ($info as $path => $wizard) {
+    foreach( $wizard['pageids'] as $page => $id ) {
+      $forms[$id] = array(
+        'callback' => 'wizard_helper_page_form',
+        'callback arguments' => array($form_id, $args)
+      );
+    }
+  }
+  return $forms;
+}
+
+/**
+ * Adds a common form function for all wizard forms.  This fixes several
+ * issues with adding AHAH within your forms.
+ */
+function wizard_helper_page_form(&$form_state, $form_id, $args) {
+  // Include the form.
+  $form = array();
+  ctools_include('wizard');
+  ctools_wizard_wrapper($form, $form_state);
+  wizard_helper_include_form($form_id);
+  if (function_exists($form_id)) {
+    $form_id($form, $form_state);
+  }
+  return $form;
+}
+
+/**
  * Wizard callback function.
  */
 function wizard_helper_wizard($js = '', $step = '') {
@@ -200,7 +249,9 @@ function wizard_helper_wizard($js = '', $step = '') {
       'show trail' => TRUE,
       'show back' => TRUE,
       'show cancel' => TRUE,
-      'show return' => FALSE
+      'show return' => FALSE,
+      'cancel path' => '',
+      'return path' => ''
     );
 
     // Add the defaults to the form, and then bring in those values from the
