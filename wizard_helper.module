@@ -26,13 +26,14 @@ function wizard_helper_info() {
         $result = $function();
         foreach ($result as $path => &$wizard) {
           $wizard['module'] = $module;
+          $wizard['path'] = $path;
           $wizard['id'] = isset($wizard['id']) ? $wizard['id'] : str_replace('/', '_', $path);
           $wizard['pages'] = isset($wizard['pages']) ? $wizard['pages'] : array('error' => '');
           $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
           $wizard['access callback'] = isset($wizard['access callback']) ? $wizard['access callback'] : 'user_access';
           $wizard['access arguments'] = isset($wizard['access arguments']) ? $wizard['access arguments'] : array('access content');
           $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
-          $wizard['path'] = isset($wizard['path']) ? $wizard['path'] : drupal_get_path('module', $info['module']) . '/' . $wizard['id'];
+          $wizard['wizard_path'] = isset($wizard['wizard_path']) ? $wizard['wizard_path'] : drupal_get_path('module', $module) . '/' . $wizard['id'];
           $wizard['form id'] = isset($wizard['form id']) ? $wizard['form id'] : $wizard['module'] . '_' . $wizard['id'];
           $wizard['object name'] = isset($wizard['object name']) ? $wizard['object name'] : $wizard['form id'];
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
@@ -98,12 +99,12 @@ function wizard_helper_theme() {
     foreach( $wizard['pageids'] as $page => $id ) {
 
       // Add the template if the file exists.
-      if (file_exists(getcwd() . '/' . $wizard['path'] . '/' . $id . '.tpl.php')) {
+      if (file_exists(getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.tpl.php')) {
 
         // Add the template.
         $themes[$id] = array(
           'template'  => $id,
-          'path' => $wizard['path'],
+          'path' => $wizard['wizard_path'],
           'arguments' => array('form' => NULL )
         );
       }
@@ -123,7 +124,7 @@ function wizard_helper_include_form($form_id) {
   foreach ($info as $path => $wizard) {
     foreach( $wizard['pageids'] as $page => $id ) {
       if ($id == $form_id) {
-        require_once $wizard['path'] . '/' . $id . '.inc';
+        require_once $wizard['wizard_path'] . '/' . $id . '.inc';
         break;
       }
     }
@@ -148,6 +149,23 @@ function wizard_helper_forms($form_id, $args) {
 }
 
 /**
+ * Load function for the wizard.
+ */
+function wizard_helper_load($path) {
+  $info = wizard_helper_info();
+  return $info[$path];
+}
+
+
+/**
+ * Returns the wizard information for this path.
+ */
+function wizard_helper_get_info() {
+  $item = menu_get_item();
+  return wizard_helper_load(rtrim($item['path'], '/%'));
+}
+
+/**
  * Adds a common form function for all wizard forms.  This fixes several
  * issues with adding AHAH within your forms.
  */
@@ -163,23 +181,72 @@ function wizard_helper_page_form(&$form_state, $form_id, $args) {
   return $form;
 }
 
+function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
+  // Include the ctools wizard stuff.
+  ctools_include('wizard');
+  ctools_include('ajax');
+
+  // Setup the form_state.
+  $form_state = array_merge(array(
+    $wizard['object name'] => wizard_helper_cache_get($wizard),
+    'wizard_info' => $wizard,
+    'title' => $wizard['title'],
+    'ajax' => $js
+  ), $form_state);
+
+  // Set the pages.
+  $pages = $wizard['pages'];
+
+  // Set all the pages for this wizard.
+  $forms = array();
+  foreach( $wizard['pageids'] as $page => $id ) {
+    $forms[$page] = array(
+      'form id' => $id,
+      'include' => $wizard['wizard_path'] . '/' . $id . '.inc'
+    );
+  }
+
+  // Setup our CTools multistep form.
+  $form_info = array(
+    'id' => $wizard['form id'],
+    'path' => $wizard['path'] . "/" . ($js ? 'ajax' : 'nojs') . "/%step",
+    'next callback' =>  'wizard_helper_next',
+    'finish callback' => 'wizard_helper_finish',
+    'return callback' => 'wizard_helper_finish',
+    'cancel callback' => 'wizard_helper_cancel',
+    'order' => $pages,
+    'forms' => $forms
+  );
+
+  // Setup the defaults for the wizard information.
+  $defaults = array(
+    'show trail' => TRUE,
+    'show back' => TRUE,
+    'show cancel' => TRUE,
+    'show return' => FALSE,
+    'cancel path' => '',
+    'return path' => ''
+  );
+
+  // Add the defaults to the form, and then bring in those values from the
+  // wizard.
+  $form_info = array_merge(
+    array_merge($form_info, $defaults),
+    array_intersect_key($wizard, $defaults)
+  );
+
+  // Create our multistep drupal form.
+  $step = $step ? $step : $pages[0];
+  return ctools_wizard_multistep_form($form_info, $step, $form_state);
+}
+
 /**
  * Wizard callback function.
  */
 function wizard_helper_wizard($js = '', $step = '') {
-  // Get the path to retrieve the wizard info.
-  $args = arg();
-  if ($step) {
-    array_pop($args);
-  }
-  if ($js || $js === 0) {
-    array_pop($args);
-  }
-  $path = implode('/', $args);
 
-  // Get the wizard info.
-  $info = wizard_helper_info();
-  if ($wizard = $info[$path]) {
+  // Get the wizard information for this path.
+  if ($wizard = wizard_helper_get_info()) {
 
     // Call the wizard callback to alter the info at runtime.
     if (isset($wizard['wizard callback'])) {
@@ -204,66 +271,8 @@ function wizard_helper_wizard($js = '', $step = '') {
       return $wizard['output'];
     }
 
-    // Include the ctools wizard stuff.
-    ctools_include('wizard');
-    ctools_include('ajax');
-
-    // Set the initial form state.
-    $form_state = array(
-      'title' => $wizard['title'],
-      'ajax' => $js
-    );
-
-    // Get the cached object, set the wizard, and set the cache.
-    $form_state[$wizard['object name']] = wizard_helper_cache_get($wizard);
-
-    // Set the wizard object in the form state.
-    $form_state['wizard'] = $wizard;
-
-    // Set the pages.
-    $pages = $wizard['pages'];
-
-    // Set all the pages for this wizard.
-    $forms = array();
-    foreach( $wizard['pageids'] as $page => $id ) {
-      $forms[$page] = array(
-        'form id' => $id,
-        'include' => $wizard['path'] . '/' . $id . '.inc'
-      );
-    }
-
-    // Setup our CTools multistep form.
-    $form_info = array(
-      'id' => $wizard['form id'],
-      'path' => $path . "/" . ($js ? 'ajax' : 'nojs') . "/%step",
-      'next callback' =>  'wizard_helper_next',
-      'finish callback' => 'wizard_helper_finish',
-      'return callback' => 'wizard_helper_finish',
-      'cancel callback' => 'wizard_helper_cancel',
-      'order' => $pages,
-      'forms' => $forms
-    );
-
-    // Setup the defaults for the wizard information.
-    $defaults = array(
-      'show trail' => TRUE,
-      'show back' => TRUE,
-      'show cancel' => TRUE,
-      'show return' => FALSE,
-      'cancel path' => '',
-      'return path' => ''
-    );
-
-    // Add the defaults to the form, and then bring in those values from the
-    // wizard.
-    $form_info = array_merge(
-      array_merge($form_info, $defaults),
-      array_intersect_key($wizard, $defaults)
-    );
-
-    // Create our multistep drupal form.
-    $step = $step ? $step : $pages[0];
-    return ctools_wizard_multistep_form($form_info, $step, $form_state);
+    // Return the wizard helper form.
+    return wizard_helper_form($wizard, $js, $step);
   }
 
   // Return 404 if we cannot find the information.
@@ -301,7 +310,7 @@ function wizard_helper_cache_clear($wizard) {
  * Callback for the proceed step
  */
 function wizard_helper_next(&$form_state) {
-  $wizard = $form_state['wizard'];
+  $wizard = $form_state['wizard_info'];
   wizard_helper_cache_set($wizard, $form_state[$wizard['object name']]);
 }
 
@@ -309,7 +318,7 @@ function wizard_helper_next(&$form_state) {
  * Callback generated when the wizard is finished.
  */
 function wizard_helper_finish(&$form_state) {
-  $wizard = $form_state['wizard'];
+  $wizard = $form_state['wizard_info'];
   wizard_helper_cache_clear($wizard);
   $function = $wizard['form id'] . '_finish';
   if (function_exists($function)) {
@@ -321,7 +330,7 @@ function wizard_helper_finish(&$form_state) {
  * Callback for the cancel.
  */
 function wizard_helper_cancel(&$form_state) {
-  $wizard = $form_state['wizard'];
+  $wizard = $form_state['wizard_info'];
   wizard_helper_cache_clear($wizard);
   drupal_set_message($wizard['cancel message']);
   $form_state['cancel'] = TRUE;
