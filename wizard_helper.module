@@ -153,7 +153,9 @@ function wizard_helper_forms($form_id, $args) {
  */
 function wizard_helper_load($path) {
   $info = wizard_helper_info();
-  return $info[$path];
+  $wizard = $info[$path];
+  $wizard['object'] = wizard_helper_cache_get($wizard);
+  return $wizard;
 }
 
 
@@ -188,7 +190,7 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
 
   // Setup the form_state.
   $form_state = array_merge(array(
-    $wizard['object name'] => wizard_helper_cache_get($wizard),
+    $wizard['object name'] => $wizard['object'],
     'wizard_info' => $wizard,
     'title' => $wizard['title'],
     'ajax' => $js
