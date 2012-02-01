@@ -199,6 +199,11 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
   // Set the pages.
   $pages = $wizard['pages'];
 
+  // Return nothing if there are no pages.
+  if (empty($pages)) {
+    return array();
+  }
+
   // Set all the pages for this wizard.
   $forms = array();
   foreach( $wizard['pageids'] as $page => $id ) {
@@ -257,19 +262,19 @@ function wizard_helper_wizard($js = '', $step = '') {
     }
 
     // Make sure there are pages.
-    if (!$wizard['pages']) {
+    if (empty($wizard['pages'])) {
       drupal_not_found();
       return;
     }
 
     // Make sure we have access.
-    if (!$wizard['access']) {
+    if (empty($wizard['access'])) {
       drupal_access_denied();
       return;
     }
 
     // If there is already output, then return it here.
-    if ($wizard['output']) {
+    if (!empty($wizard['output'])) {
       return $wizard['output'];
     }
 
@@ -287,7 +292,9 @@ function wizard_helper_wizard($js = '', $step = '') {
 function wizard_helper_cache_set($wizard, $value) {
   global $user;
   ctools_include('object-cache');
-  ctools_object_cache_set($wizard['object name'], $user->sid, $value);
+  if (!empty($user->sid)) {
+    ctools_object_cache_set($wizard['object name'], $user->sid, $value);
+  }
 }
 
 /**
@@ -296,7 +303,10 @@ function wizard_helper_cache_set($wizard, $value) {
 function wizard_helper_cache_get($wizard) {
   global $user;
   ctools_include('object-cache');
-  return ctools_object_cache_get($wizard['object name'], $user->sid);
+  if (!empty($user->sid)) {
+    return ctools_object_cache_get($wizard['object name'], $user->sid);
+  }
+  return NULL;
 }
 
 /**
@@ -305,7 +315,9 @@ function wizard_helper_cache_get($wizard) {
 function wizard_helper_cache_clear($wizard) {
   global $user;
   ctools_include('object-cache');
-  ctools_object_cache_clear($wizard['object name'], $user->sid);
+  if (!empty($user->sid)) {
+    ctools_object_cache_clear($wizard['object name'], $user->sid);
+  }
 }
 
 /**
