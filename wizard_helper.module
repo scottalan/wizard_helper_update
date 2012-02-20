@@ -28,7 +28,7 @@ function wizard_helper_info() {
           $wizard['module'] = $module;
           $wizard['path'] = $path;
           $wizard['id'] = isset($wizard['id']) ? $wizard['id'] : str_replace('/', '_', $path);
-          $wizard['pages'] = isset($wizard['pages']) ? $wizard['pages'] : array('error' => '');
+          $wizard['pages'] = isset($wizard['pages']) ? $wizard['pages'] : array();
           $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
           $wizard['access callback'] = isset($wizard['access callback']) ? $wizard['access callback'] : 'user_access';
           $wizard['access arguments'] = isset($wizard['access arguments']) ? $wizard['access arguments'] : array('access content');
@@ -42,9 +42,11 @@ function wizard_helper_info() {
           $wizard['access'] = TRUE;
 
           // Iterate though the pages and assign page ids.
-          foreach ($wizard['pages'] as $page => $title) {
-            if (!isset($wizard['pageids'][$page])) {
-              $wizard['pageids'][$page] = $wizard['form id'] . '_' . $page;
+          if (!empty($wizard['pages'])) {
+            foreach ($wizard['pages'] as $page => $title) {
+              if (!isset($wizard['pageids'][$page])) {
+                $wizard['pageids'][$page] = $wizard['form id'] . '_' . $page;
+              }
             }
           }
         }
@@ -124,7 +126,10 @@ function wizard_helper_include_form($form_id) {
   foreach ($info as $path => $wizard) {
     foreach( $wizard['pageids'] as $page => $id ) {
       if ($id == $form_id) {
-        require_once $wizard['wizard_path'] . '/' . $id . '.inc';
+        $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.inc';
+        if (file_exists($file)) {
+          require_once $file;
+        }
         break;
       }
     }
@@ -207,10 +212,11 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
   // Set all the pages for this wizard.
   $forms = array();
   foreach( $wizard['pageids'] as $page => $id ) {
-    $forms[$page] = array(
-      'form id' => $id,
-      'include' => $wizard['wizard_path'] . '/' . $id . '.inc'
-    );
+    $forms[$page] = array('form id' => $id);
+    $file = $wizard['wizard_path'] . '/' . $id . '.inc';
+    if (file_exists(getcwd() . '/' . $file)) {
+      $forms[$page]['include'] = $file;
+    }
   }
 
   // Setup our CTools multistep form.
@@ -242,9 +248,45 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
     array_intersect_key($wizard, $defaults)
   );
 
+  // If there is no step, then set it to the first item in the array.
+  if (!$step) {
+    reset($pages);
+    $step = key($pages);
+  }
+
   // Create our multistep drupal form.
-  $step = $step ? $step : $pages[0];
   return ctools_wizard_multistep_form($form_info, $step, $form_state);
+}
+
+/**
+ * Get the correct context.
+ *
+ * @return {string} The step for the user.
+ */
+function wizard_helper_set_context($wizard, $js, $step) {
+
+  // If no step is provided, but they have a previous context, then send them
+  // to the correct spot and provide a message if need be.
+  if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
+
+    // If the wizard wishes to say something to the user.
+    if (!empty($wizard['restore message'])) {
+
+      // Print a message so they know what is up.
+      drupal_set_message($wizard['restore message']);
+    }
+
+    // Now goto the correct context.
+    drupal_goto($wizard['path'] . '/' . ($js ? $js : 'nojs') . '/' . $wizard['object']['step']);
+  }
+
+  // On the flip side, if they go to a step, but do not have context, then
+  // send them back to the beginning.
+  if ($step && empty($wizard['object'])) {
+
+    // Go to the original path.
+    drupal_goto($wizard['path']);
+  }
 }
 
 /**
@@ -255,10 +297,24 @@ function wizard_helper_wizard($js = '', $step = '') {
   // Get the wizard information for this path.
   if ($wizard = wizard_helper_get_info()) {
 
+    // Set the correct context for this wizard.
+    wizard_helper_set_context($wizard, $js, $step);
+
+    // Make sure we have a context object defined.
+    if (empty($wizard['object'])) {
+      $wizard['object'] = array();
+    }
+
     // Call the wizard callback to alter the info at runtime.
     if (isset($wizard['wizard callback'])) {
       $function = $wizard['wizard callback'];
       $function($step, $wizard);
+    }
+
+    // Set the current context.
+    if ($step && (empty($wizard['object']['step']) || ($step != $wizard['object']['step']))) {
+      $wizard['object']['step'] = $step;
+      wizard_helper_cache_set($wizard, $wizard['object']);
     }
 
     // Make sure there are pages.
@@ -346,6 +402,8 @@ function wizard_helper_finish(&$form_state) {
 function wizard_helper_cancel(&$form_state) {
   $wizard = $form_state['wizard_info'];
   wizard_helper_cache_clear($wizard);
-  drupal_set_message($wizard['cancel message']);
+  if (!empty($wizard['cancel message'])) {
+    drupal_set_message($wizard['cancel message']);
+  }
   $form_state['cancel'] = TRUE;
 }
