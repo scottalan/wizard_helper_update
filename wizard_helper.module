@@ -264,28 +264,33 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
  * @return {string} The step for the user.
  */
 function wizard_helper_set_context($wizard, $js, $step) {
+  global $user;
 
-  // If no step is provided, but they have a previous context, then send them
-  // to the correct spot and provide a message if need be.
-  if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
+  // We only do this for valid sessions.
+  if (!empty($user->sid)) {
 
-    // If the wizard wishes to say something to the user.
-    if (!empty($wizard['restore message'])) {
+    // If no step is provided, but they have a previous context, then send them
+    // to the correct spot and provide a message if need be.
+    if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
 
-      // Print a message so they know what is up.
-      drupal_set_message($wizard['restore message']);
+      // If the wizard wishes to say something to the user.
+      if (!empty($wizard['restore message'])) {
+
+        // Print a message so they know what is up.
+        drupal_set_message($wizard['restore message']);
+      }
+
+      // Now goto the correct context.
+      drupal_goto($wizard['path'] . '/' . ($js ? $js : 'nojs') . '/' . $wizard['object']['step']);
     }
 
-    // Now goto the correct context.
-    drupal_goto($wizard['path'] . '/' . ($js ? $js : 'nojs') . '/' . $wizard['object']['step']);
-  }
+    // On the flip side, if they go to a step, but do not have context, then
+    // send them back to the beginning.
+    if ($step && empty($wizard['object'])) {
 
-  // On the flip side, if they go to a step, but do not have context, then
-  // send them back to the beginning.
-  if ($step && empty($wizard['object'])) {
-
-    // Go to the original path.
-    drupal_goto($wizard['path']);
+      // Go to the original path.
+      drupal_goto($wizard['path']);
+    }
   }
 }
 
@@ -346,34 +351,24 @@ function wizard_helper_wizard($js = '', $step = '') {
  * Set the object cache.
  */
 function wizard_helper_cache_set($wizard, $value) {
-  global $user;
   ctools_include('object-cache');
-  if (!empty($user->sid)) {
-    ctools_object_cache_set($wizard['object name'], $user->sid, $value);
-  }
+  ctools_object_cache_set('wizard_helper', $wizard['object name'], $value);
 }
 
 /**
  * Get the object cache.
  */
 function wizard_helper_cache_get($wizard) {
-  global $user;
   ctools_include('object-cache');
-  if (!empty($user->sid)) {
-    return ctools_object_cache_get($wizard['object name'], $user->sid);
-  }
-  return NULL;
+  return ctools_object_cache_get('wizard_helper', $wizard['object name']);
 }
 
 /**
  * Clear the object cache.
  */
 function wizard_helper_cache_clear($wizard) {
-  global $user;
   ctools_include('object-cache');
-  if (!empty($user->sid)) {
-    ctools_object_cache_clear($wizard['object name'], $user->sid);
-  }
+  ctools_object_cache_clear('wizard_helper', $wizard['object name']);
 }
 
 /**
