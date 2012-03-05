@@ -80,7 +80,7 @@ function wizard_helper_menu() {
       'access arguments' => $wizard['access arguments'],
       'type' => MENU_CALLBACK,
     );
-    $items[$path . '/%ctools_js'] = $items[$path];
+    $items[$path . '/%/%ctools_js'] = $items[$path];
   }
   return $items;
 }
@@ -188,7 +188,7 @@ function wizard_helper_page_form(&$form_state, $form_id, $args) {
   return $form;
 }
 
-function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
+function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   // Include the ctools wizard stuff.
   ctools_include('wizard');
   ctools_include('ajax');
@@ -222,7 +222,7 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
   // Setup our CTools multistep form.
   $form_info = array(
     'id' => $wizard['form id'],
-    'path' => $wizard['path'] . "/" . ($js ? 'ajax' : 'nojs') . "/%step",
+    'path' => $wizard['path'] . "/%step/" . ($js ? 'ajax' : 'nojs'),
     'next callback' =>  'wizard_helper_next',
     'finish callback' => 'wizard_helper_finish',
     'return callback' => 'wizard_helper_finish',
@@ -263,7 +263,7 @@ function wizard_helper_form($wizard, $js, $step, $form_state = array()) {
  *
  * @return {string} The step for the user.
  */
-function wizard_helper_set_context($wizard, $js, $step) {
+function wizard_helper_set_context($wizard, $step, $js) {
   global $user;
 
   // We only do this for valid sessions.
@@ -281,7 +281,7 @@ function wizard_helper_set_context($wizard, $js, $step) {
       }
 
       // Now goto the correct context.
-      drupal_goto($wizard['path'] . '/' . ($js ? $js : 'nojs') . '/' . $wizard['object']['step']);
+      drupal_goto($wizard['path'] . '/' . $wizard['object']['step'] . '/' . ($js ? $js : 'nojs'));
     }
 
     // On the flip side, if they go to a step, but do not have context, then
@@ -297,13 +297,13 @@ function wizard_helper_set_context($wizard, $js, $step) {
 /**
  * Wizard callback function.
  */
-function wizard_helper_wizard($js = '', $step = '') {
+function wizard_helper_wizard($step = '', $js = '') {
 
   // Get the wizard information for this path.
   if ($wizard = wizard_helper_get_info()) {
 
     // Set the correct context for this wizard.
-    wizard_helper_set_context($wizard, $js, $step);
+    wizard_helper_set_context($wizard, $step, $js);
 
     // Make sure we have a context object defined.
     if (empty($wizard['object'])) {
@@ -340,7 +340,7 @@ function wizard_helper_wizard($js = '', $step = '') {
     }
 
     // Return the wizard helper form.
-    return wizard_helper_form($wizard, $js, $step);
+    return wizard_helper_form($wizard, $step, $js);
   }
 
   // Return 404 if we cannot find the information.
