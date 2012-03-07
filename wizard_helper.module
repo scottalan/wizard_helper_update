@@ -409,8 +409,9 @@ function wizard_helper_finish(&$form_state) {
 function wizard_helper_cancel(&$form_state) {
   $wizard = $form_state['wizard_info'];
   wizard_helper_cache_clear($wizard);
+  $form_state['executed'] = TRUE;
+  $form_state['cancel'] = TRUE;
   if (!empty($wizard['cancel message'])) {
     drupal_set_message($wizard['cancel message']);
   }
-  $form_state['cancel'] = TRUE;
 }
