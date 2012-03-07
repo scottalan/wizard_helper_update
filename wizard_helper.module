@@ -398,8 +398,9 @@ function wizard_helper_finish(&$form_state) {
   wizard_helper_cache_clear($wizard);
   $function = $wizard['wizard finish'];
   if (function_exists($function)) {
-    $function($form_state);
+    $function($form_state[$wizard['object name']]);
   }
+  $form_state['complete'] = TRUE;
 }
 
 /**
