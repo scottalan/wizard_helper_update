@@ -107,7 +107,7 @@ function wizard_helper_theme() {
         $themes[$id] = array(
           'template'  => $id,
           'path' => $wizard['wizard_path'],
-          'arguments' => array('form' => NULL )
+          'arguments' => array('form' => NULL)
         );
       }
     }
@@ -253,6 +253,9 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
     reset($pages);
     $step = key($pages);
   }
+
+  // Store the registration object in $_SESSION.
+  $_SESSION[$wizard['object name']] = $wizard['object'];
 
   // Create our multistep drupal form.
   return ctools_wizard_multistep_form($form_info, $step, $form_state);
