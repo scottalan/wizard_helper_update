@@ -16,6 +16,9 @@ function wizard_helper_info() {
   if (!$info) {
     if ($cache = cache_get('wizard_helper_info')) {
       $info = $cache->data;
+
+      // Allow others to alter the information.
+      drupal_alter('wizard_info', $info);
     }
     else {
       $info = array();
@@ -36,6 +39,7 @@ function wizard_helper_info() {
           $wizard['wizard_path'] = isset($wizard['wizard_path']) ? $wizard['wizard_path'] : drupal_get_path('module', $module) . '/' . $wizard['id'];
           $wizard['form id'] = isset($wizard['form id']) ? $wizard['form id'] : $wizard['module'] . '_' . $wizard['id'];
           $wizard['object name'] = isset($wizard['object name']) ? $wizard['object name'] : $wizard['form id'];
+          $wizard['context id'] = 0;
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
           $wizard['cancel path'] = isset($wizard['cancel path']) ? $wizard['cancel path'] : $path;
           $wizard['return path'] = isset($wizard['return path']) ? $wizard['return path'] : $path;
@@ -362,11 +366,22 @@ function wizard_helper_goto($wizard, $step = '') {
 }
 
 /**
+ * Gets the name of the cache.
+ */
+function wizard_helper_cache_name($wizard) {
+  $name = $wizard['object name'];
+  if (!empty($wizard['context id'])) {
+    $name .= '_' . $wizard['context id'];
+  }
+  return $name;
+}
+
+/**
  * Set the object cache.
  */
 function wizard_helper_cache_set($wizard, $value) {
   ctools_include('object-cache');
-  ctools_object_cache_set('wizard_helper', $wizard['object name'], $value);
+  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
 }
 
 /**
@@ -374,7 +389,7 @@ function wizard_helper_cache_set($wizard, $value) {
  */
 function wizard_helper_cache_get($wizard) {
   ctools_include('object-cache');
-  return ctools_object_cache_get('wizard_helper', $wizard['object name']);
+  return ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
 }
 
 /**
@@ -382,7 +397,7 @@ function wizard_helper_cache_get($wizard) {
  */
 function wizard_helper_cache_clear($wizard) {
   ctools_include('object-cache');
-  ctools_object_cache_clear('wizard_helper', $wizard['object name']);
+  ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
 }
 
 /**
