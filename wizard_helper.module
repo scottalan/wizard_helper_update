@@ -290,14 +290,6 @@ function wizard_helper_set_context($wizard, $step, $js) {
       // Now goto the correct context.
       drupal_goto($wizard['path'] . '/' . $wizard['object']['step'] . '/' . ($js ? $js : 'nojs'));
     }
-
-    // On the flip side, if they go to a step, but do not have context, then
-    // send them back to the beginning.
-    if ($step && empty($wizard['object'])) {
-
-      // Go to the original path.
-      drupal_goto($wizard['path']);
-    }
   }
 }
 
