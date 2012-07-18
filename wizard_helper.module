@@ -278,7 +278,7 @@ function wizard_helper_set_context($wizard, $step, $js) {
 
     // If no step is provided, but they have a previous context, then send them
     // to the correct spot and provide a message if need be.
-    if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
+    if (!$step && !empty($wizard['object']) && $wizard['object']['step'] && empty($wizard['object']['force_redirect'])) {
 
       // If the wizard wishes to say something to the user.
       if (!empty($wizard['restore message'])) {
@@ -351,6 +351,7 @@ function wizard_helper_wizard($step = '', $js = '') {
  */
 function wizard_helper_goto($wizard, $step = '') {
   $wizard['object']['step'] = $step;
+  $wizard['object']['force_redirect'] = true;
   wizard_helper_cache_set($wizard, $wizard['object']);
   $path = $wizard['path'];
   $path .= $step ? '/' . $step : '';
