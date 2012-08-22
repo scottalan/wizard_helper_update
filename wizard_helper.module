@@ -349,9 +349,9 @@ function wizard_helper_wizard($step = '', $js = '') {
 /**
  * Go to a page within the wizard without it resetting context.
  */
-function wizard_helper_goto($wizard, $step = '') {
+function wizard_helper_goto($wizard, $step = '', $forced = TRUE) {
   $wizard['object']['step'] = $step;
-  $wizard['object']['force_redirect'] = true;
+  $wizard['object']['force_redirect'] = $forced;
   wizard_helper_cache_set($wizard, $wizard['object']);
   $path = $wizard['path'];
   $path .= $step ? '/' . $step : '';
