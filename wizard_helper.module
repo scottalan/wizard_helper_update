@@ -355,7 +355,9 @@ function wizard_helper_goto($wizard, $step = '', $forced = TRUE) {
   wizard_helper_cache_set($wizard, $wizard['object']);
   $path = $wizard['path'];
   $path .= $step ? '/' . $step : '';
-  drupal_goto($path);
+  $query = $_GET;
+  unset($query['q']);
+  drupal_goto($path, $query);
 }
 
 /**
