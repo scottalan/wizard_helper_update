@@ -25,7 +25,7 @@ function wizard_helper_info() {
 
       // Get the wizard information from other modules.
       foreach (module_implements('wizard_info') as $module) {
-        $function = $module .'_wizard_info';
+        $function = $module . '_wizard_info';
         $result = $function();
         foreach ($result as $path => &$wizard) {
           $wizard['module'] = $module;
@@ -102,7 +102,7 @@ function wizard_helper_theme() {
   foreach ($info as $path => $wizard) {
 
     // Get all the wizard helper page ids.
-    foreach( $wizard['pageids'] as $page => $id ) {
+    foreach ($wizard['pageids'] as $page => $id) {
 
       // Add the template if the file exists.
       if (file_exists(getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.tpl.php')) {
@@ -128,7 +128,7 @@ function wizard_helper_include_form($form_id) {
   // Get the wizard information.
   $info = wizard_helper_info();
   foreach ($info as $path => $wizard) {
-    foreach( $wizard['pageids'] as $page => $id ) {
+    foreach ($wizard['pageids'] as $page => $id) {
       if ($id == $form_id) {
         $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.inc';
         if (file_exists($file)) {
@@ -141,13 +141,13 @@ function wizard_helper_include_form($form_id) {
 }
 
 /**
- * Implements hook_forms
+ * Implements hook_forms().
  */
 function wizard_helper_forms($form_id, $args) {
   $forms = array();
   $info = wizard_helper_info();
   foreach ($info as $path => $wizard) {
-    foreach( $wizard['pageids'] as $page => $id ) {
+    foreach ($wizard['pageids'] as $page => $id) {
       $forms[$id] = array(
         'callback' => 'wizard_helper_page_form',
         'callback arguments' => array($form_id, $args)
@@ -227,7 +227,7 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   $form_info = array(
     'id' => $wizard['form id'],
     'path' => $wizard['path'] . "/%step/" . ($js ? 'ajax' : 'nojs'),
-    'next callback' =>  'wizard_helper_next',
+    'next callback' => 'wizard_helper_next',
     'finish callback' => 'wizard_helper_finish',
     'return callback' => 'wizard_helper_finish',
     'cancel callback' => 'wizard_helper_cancel',
@@ -327,11 +327,8 @@ function wizard_helper_wizard($step = '', $js = '') {
       return;
     }
 
-    // Make sure we have access.
-    if (empty($wizard['access'])) {
-      drupal_access_denied();
-      return;
-    }
+    // Make sure they have access or follow a redirect.
+    wizard_helper_check_access_redirect($wizard, $step);
 
     // If there is already output, then return it here.
     if (!empty($wizard['output'])) {
@@ -344,6 +341,33 @@ function wizard_helper_wizard($step = '', $js = '') {
 
   // Return 404 if we cannot find the information.
   drupal_not_found();
+}
+
+/**
+ * Check a step's access function to redirect, lockout page, or continue to display.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param string $step
+ *   The current step.
+ */
+function wizard_helper_check_access_redirect(&$wizard, $step) {
+  // Check for an access function.
+  wizard_helper_include_form($wizard['object name'] . '_' . $step);
+  $access_function = $wizard['object name'] . '_' . $step . '_access';
+  if (function_exists($access_function)) {
+    $wizard['access'] = $access_function($wizard);
+  }
+
+  // Make sure we have access.
+  if (empty($wizard['access'])) {
+    drupal_access_denied();
+    module_invoke_all('exit');
+    exit();
+  }
+  elseif (is_string($wizard['access'])) {
+    wizard_helper_goto($wizard, $wizard['access']);
+  }
 }
 
 /**
@@ -373,30 +397,143 @@ function wizard_helper_cache_name($wizard) {
 
 /**
  * Set the object cache.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param array $value
+ *   The cached data to save.
+ * @param boolean $save_sid
+ *   If false, the data will be saved without a sid and can only be accessed
+ *   with a direct link containing the mongo _id.
  */
-function wizard_helper_cache_set($wizard, $value) {
-  ctools_include('object-cache');
-  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
+function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
+  if ($wizard['cache_type'] == 'mongo') {
+    $_id = (!empty($value['_id'])) ? $value['_id'] : NULL;
+
+    // Unset values that are not serialized.
+    $data = $value;
+    unset($data['_id']);
+    unset($data['sid']);
+    unset($data['wizard']);
+    unset($data['time']);
+
+    // Update required values.
+    $insert_value = array(
+      'wizard' => wizard_helper_cache_name($wizard),
+      'time' => time(),
+      // This must be serialized to save objects.
+      'data' => serialize($data),
+    );
+    if ($save_sid) {
+      $insert_value['sid'] = session_id();
+    }
+
+    // Initialize mongodb.
+    $collection = mongodb_collection($wizard['mongo_collection']);
+
+    if (!empty($_id)) {
+      // Cache already exists, update it.
+      $criteria = array('_id' => $_id);
+      $collection->update($criteria, $insert_value);
+    }
+    else {
+      // Create new cache.
+      $collection->insert($insert_value);
+    }
+  }
+  else {
+    // The default storage method is ctools cache.
+    ctools_include('object-cache');
+    ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
+  }
 }
 
 /**
  * Get the object cache.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param string $_id
+ *   The mongodb ID to load the cache explicitly.
+ *
+ * @return array
+ *   The cached data array.
  */
-function wizard_helper_cache_get($wizard) {
-  ctools_include('object-cache');
-  return ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
+function wizard_helper_cache_get($wizard, $_id = NULL) {
+  if ($wizard['cache_type'] == 'mongo') {
+    $criteria = array(
+      'wizard' => wizard_helper_cache_name($wizard),
+    );
+    if ($_id) {
+      $criteria['_id'] = new MongoId($_id);
+    }
+    else {
+      $criteria['sid'] = session_id();
+    }
+
+    // Load the document.
+    $collection = mongodb_collection($wizard['mongo_collection']);
+    $document = $collection->findOne($criteria);
+
+    if ($document) {
+      // Unserialize the main content.
+      $data = unserialize($document['data']);
+      unset($document['data']);
+
+      if ($data) {
+        // Merge the main content back into the document.
+        return array_merge($data, $document);
+      }
+      else {
+        return $document;
+      }
+    }
+
+    // Nothing cached.
+    return array();
+  }
+  else {
+    // The default storage method is ctools cache.
+    ctools_include('object-cache');
+    return ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
+  }
 }
 
 /**
  * Clear the object cache.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param string $_id
+ *   The mongodb id. If supplied this item will be cleared
+ *   otherwise the session id will be used.
  */
-function wizard_helper_cache_clear($wizard) {
-  ctools_include('object-cache');
-  ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
+function wizard_helper_cache_clear($wizard, $_id = NULL) {
+  if ($wizard['cache_type'] == 'mongo') {
+    $criteria = array(
+      'wizard' => wizard_helper_cache_name($wizard),
+    );
+    if ($_id) {
+      $criteria['_id'] = new MongoId($_id);
+    }
+    else {
+      $criteria['sid'] = session_id();
+      if (empty($criteria['sid'])) {
+        return FALSE;
+      }
+    }
+
+    $collection = mongodb_collection('group_registration_cache');
+    return $collection->remove($criteria);
+  }
+  else {
+    ctools_include('object-cache');
+    ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
+  }
 }
 
 /**
- * Callback for the proceed step
+ * Callback for the proceed step.
  */
 function wizard_helper_next(&$form_state) {
   $wizard = $form_state['wizard_info'];
@@ -408,7 +545,15 @@ function wizard_helper_next(&$form_state) {
  */
 function wizard_helper_finish(&$form_state) {
   $wizard = $form_state['wizard_info'];
-  wizard_helper_cache_clear($wizard);
+  // Remove the cache object.
+  if (empty($form_state[$wizard['object name']]['save_cache'])) {
+    wizard_helper_cache_clear($wizard);
+  }
+  else {
+    // Remove the sid but save the wizard.
+    wizard_helper_cache_set($wizard, $wizard['object'], FALSE);
+  }
+  // Run finalization processes.
   $function = $wizard['wizard finish'];
   if (function_exists($function)) {
     $function($form_state[$wizard['object name']]);
