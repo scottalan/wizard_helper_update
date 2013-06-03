@@ -483,6 +483,9 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
     }
     else {
       $criteria['sid'] = session_id();
+      if (empty($criteria['sid'])) {
+        return NULL;
+      }
     }
 
     // Load the document.
