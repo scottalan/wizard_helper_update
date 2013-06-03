@@ -123,11 +123,25 @@ function wizard_helper_theme() {
 
 /**
  * This function will include a form from the wizard_helper.
+ *
+ * @param string $form_id
+ *   The full name of the form file to include.
+ * @param boolean $force_load
+ *   If TRUE, will load the file even if it's not a step in the wizard.
  */
-function wizard_helper_include_form($form_id) {
+function wizard_helper_include_form($form_id, $force_load = FALSE) {
   // Get the wizard information.
   $info = wizard_helper_info();
   foreach ($info as $path => $wizard) {
+    // This will load it even if the file isn't explicitly listed as a step.
+    if ($force_load) {
+      $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $form_id . '.inc';
+      if (file_exists($file)) {
+        require_once $file;
+      }
+    }
+
+    // This checks to make sure the step is included before including the file.
     foreach ($wizard['pageids'] as $page => $id) {
       if ($id == $form_id) {
         $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.inc';
