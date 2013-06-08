@@ -453,6 +453,7 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
     else {
       // Create new cache.
       $collection->insert($insert_value);
+      $value['_id'] = $insert_value['_id'];
     }
   }
   else {
