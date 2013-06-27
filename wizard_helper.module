@@ -292,7 +292,7 @@ function wizard_helper_set_context($wizard, $step, $js) {
 
     // If no step is provided, but they have a previous context, then send them
     // to the correct spot and provide a message if need be.
-    if (!$step && !empty($wizard['object']) && $wizard['object']['step'] && empty($wizard['object']['force_redirect'])) {
+    if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
 
       // If the wizard wishes to say something to the user.
       if (!empty($wizard['restore message'])) {
@@ -333,6 +333,13 @@ function wizard_helper_wizard($step = '', $js = '') {
     if ($step && (empty($wizard['object']['step']) || ($step != $wizard['object']['step']))) {
       $wizard['object']['step'] = $step;
       wizard_helper_cache_set($wizard, $wizard['object']);
+    }
+
+    // If there is no step set at this point.
+    if (empty($step) && !empty($wizard['pages'])) {
+      // Set the step to the first page.
+      reset($wizard['pages']);
+      $step = key($wizard['pages']);
     }
 
     // Make sure there are pages.
@@ -387,9 +394,8 @@ function wizard_helper_check_access_redirect(&$wizard, $step) {
 /**
  * Go to a page within the wizard without it resetting context.
  */
-function wizard_helper_goto($wizard, $step = '', $forced = TRUE) {
+function wizard_helper_goto($wizard, $step = '') {
   $wizard['object']['step'] = $step;
-  $wizard['object']['force_redirect'] = $forced;
   wizard_helper_cache_set($wizard, $wizard['object']);
   $path = $wizard['path'];
   $path .= $step ? '/' . $step : '';
