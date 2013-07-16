@@ -133,22 +133,11 @@ function wizard_helper_include_form($form_id, $force_load = FALSE) {
   // Get the wizard information.
   $info = wizard_helper_info();
   foreach ($info as $path => $wizard) {
-    // This will load it even if the file isn't explicitly listed as a step.
-    if ($force_load) {
+    // Determine if the page should be loaded.
+    if ($force_load || in_array($form_id, $wizard['pageids'])) {
       $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $form_id . '.inc';
       if (file_exists($file)) {
         require_once $file;
-      }
-    }
-
-    // This checks to make sure the step is included before including the file.
-    foreach ($wizard['pageids'] as $page => $id) {
-      if ($id == $form_id) {
-        $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.inc';
-        if (file_exists($file)) {
-          require_once $file;
-        }
-        break;
       }
     }
   }
@@ -275,8 +264,24 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   // Store the registration object in $_SESSION.
   $_SESSION[$wizard['object name']] = $wizard['object'];
 
+  $form_info['wrapper'] = 'wizard_helper_wrapper';
+
   // Create our multistep drupal form.
   return ctools_wizard_multistep_form($form_info, $step, $form_state);
+}
+
+/**
+ * A callback to modify the form just before it's built.
+ *
+ * @param array $form
+ *   The form array.
+ * @param array $form_state
+ *   The form_state array object.
+ */
+function wizard_helper_wrapper(&$form, &$form_state) {
+  $wizard = wizard_helper_get_info();
+  // Override the back button with the trail setting.
+  $form['buttons']['previous']['#next'] = wizard_helper_trail_previous($wizard);
 }
 
 /**
@@ -329,6 +334,9 @@ function wizard_helper_wizard($step = '', $js = '') {
       $function($step, $wizard);
     }
 
+    // Remember the last page we were on.
+    $previous_step = $wizard['object']['step'];
+
     // Set the current context.
     if ($step && (empty($wizard['object']['step']) || ($step != $wizard['object']['step']))) {
       $wizard['object']['step'] = $step;
@@ -350,6 +358,11 @@ function wizard_helper_wizard($step = '', $js = '') {
 
     // Make sure they have access or follow a redirect.
     wizard_helper_check_access_redirect($wizard, $step);
+
+    // Make sure the current page is in the step trail.
+    if (wizard_helper_trail_add($wizard, $previous_step, $step)) {
+      wizard_helper_cache_set($wizard, $wizard['object']);
+    }
 
     // If there is already output, then return it here.
     if (!empty($wizard['output'])) {
@@ -395,8 +408,17 @@ function wizard_helper_check_access_redirect(&$wizard, $step) {
  * Go to a page within the wizard without it resetting context.
  */
 function wizard_helper_goto($wizard, $step = '') {
+
+  // Make sure the current page is in the step trail.
+  wizard_helper_trail_add($wizard, $wizard['object']['step'], $step);
+
+  // Set the current step.
   $wizard['object']['step'] = $step;
+
+  // Save the wizard.
   wizard_helper_cache_set($wizard, $wizard['object']);
+
+  // Redirect.
   $path = $wizard['path'];
   $path .= $step ? '/' . $step : '';
   $query = $_GET;
@@ -595,5 +617,80 @@ function wizard_helper_cancel(&$form_state) {
   $form_state['cancel'] = TRUE;
   if (!empty($wizard['cancel message'])) {
     drupal_set_message($wizard['cancel message']);
+  }
+
+  // Call a callback for the wizard.
+  if (is_callable($wizard['wizard cancel'])) {
+    $wizard['wizard cancel']($wizard);
+  }
+}
+
+/**
+ * Add a new step to the trail, replacing future steps if the wizard is changing course.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param string $current_step
+ *   The current step.
+ * @param string $new_step
+ *   The next page to add.
+ *
+ * @return boolean
+ *   TRUE if the trail was actually modified.
+ */
+function wizard_helper_trail_add(&$wizard, $current_step, $new_step) {
+  // If there is no step trail, then just add the new one.
+  if (!isset($wizard['object']['step_trail'])) {
+    $wizard['object']['step_trail'] = array($new_step);
+    return TRUE;
+  }
+
+  // Find locate the steps in the trail.
+  $current_step_id = array_search($current_step, $wizard['object']['step_trail']);
+  $new_step_id = array_search($new_step, $wizard['object']['step_trail']);
+  // If the next step is already in the trail, they just stepped back.
+  if ($new_step_id !== FALSE) {
+    return FALSE;
+  }
+  // If the previous page can't be found.
+  elseif ($current_step_id === FALSE) {
+    $wizard['object']['step_trail'][] = $new_step;
+    return TRUE;
+  }
+  // If the next step in the trail is not the next step.
+  elseif (
+    $current_step != $new_step
+    && (
+      empty($wizard['object']['step_trail'][$current_step_id + 1])
+      || $wizard['object']['step_trail'][$current_step_id + 1] != $new_step
+    )
+  ) {
+    // Trim the trail and add the new step.
+    array_splice($wizard['object']['step_trail'], $current_step_id + 1);
+    $wizard['object']['step_trail'][] = $new_step;
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Determine the step that was accessed prior to the current step.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ *
+ * @return string
+ *   The step before the current step.
+ */
+function wizard_helper_trail_previous(&$wizard) {
+  $current_step_id = array_search($wizard['object']['step'], $wizard['object']['step_trail']);
+  if ($current_step_id > 0) {
+    return $wizard['object']['step_trail'][$current_step_id - 1];
+  }
+  elseif (!empty($wizard['object']['step_trail'][0])) {
+    return $wizard['object']['step_trail'][0];
+  }
+  else {
+    return $wizard['object']['step'];
   }
 }
