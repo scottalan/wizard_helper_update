@@ -335,7 +335,7 @@ function wizard_helper_wizard($step = '', $js = '') {
     }
 
     // Remember the last page we were on.
-    $previous_step = $wizard['object']['step'];
+    $previous_step = isset($wizard['object']['step']) ? $wizard['object']['step'] : '';
 
     // Set the current context.
     if ($step && (empty($wizard['object']['step']) || ($step != $wizard['object']['step']))) {
@@ -410,7 +410,8 @@ function wizard_helper_check_access_redirect(&$wizard, $step) {
 function wizard_helper_goto($wizard, $step = '') {
 
   // Make sure the current page is in the step trail.
-  wizard_helper_trail_add($wizard, $wizard['object']['step'], $step);
+  $previous_step = isset($wizard['object']['step']) ? $wizard['object']['step'] : '';
+  wizard_helper_trail_add($wizard, $previous_step, $step);
 
   // Set the current step.
   $wizard['object']['step'] = $step;
