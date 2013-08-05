@@ -221,6 +221,8 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   foreach( $wizard['pageids'] as $page => $id ) {
     $forms[$page] = array('form id' => $id);
     $file = $wizard['wizard_path'] . '/' . $id . '.inc';
+    // @todo - this should only be checked when the for is created - wasting
+    // cycles checking for files that are never loaded.
     if (file_exists(getcwd() . '/' . $file)) {
       $forms[$page]['include'] = $file;
     }
@@ -465,7 +467,7 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
       'wizard' => wizard_helper_cache_name($wizard),
       'time' => time(),
       // This must be serialized to save objects.
-      'data' => serialize($data),
+      'data' => $data,
     );
     if ($save_sid) {
       $insert_value['sid'] = session_id();
@@ -485,11 +487,10 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
       $value['_id'] = $insert_value['_id'];
     }
   }
-  else {
-    // The default storage method is ctools cache.
-    ctools_include('object-cache');
-    ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
-  }
+  // The default storage method is ctools cache. Set this cache even when also
+  // saving to mongo.
+  ctools_include('object-cache');
+  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
 }
 
 /**
@@ -505,6 +506,14 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
   if ($wizard['cache_type'] == 'mongo') {
+    // Check ctools cache first. If it doesn't exist, then check mongo.
+    ctools_include('object-cache');
+    $cache = ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
+    if ($cache) {
+      return $cache;
+    }
+
+    // Get the cache from mongo.
     $criteria = array(
       'wizard' => wizard_helper_cache_name($wizard),
     );
@@ -523,8 +532,11 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
     $document = $collection->findOne($criteria);
 
     if ($document) {
-      // Unserialize the main content.
-      $data = unserialize($document['data']);
+      $data = $document['data'];
+      if (is_string($data)) {
+        // Unserialize the main content.
+        $data = unserialize($data);
+      }
       unset($document['data']);
 
       if ($data) {
