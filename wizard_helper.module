@@ -53,6 +53,9 @@ function wizard_helper_info() {
               }
             }
           }
+
+          // The start page.
+          $wizard['start'] = reset($wizard['pages']);
         }
         $info = array_merge($info, $result);
       }
@@ -281,9 +284,11 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
  *   The form_state array object.
  */
 function wizard_helper_wrapper(&$form, &$form_state) {
-  $wizard = wizard_helper_get_info();
-  // Override the back button with the trail setting.
-  $form['buttons']['previous']['#next'] = wizard_helper_trail_previous($wizard);
+  $wizard_name = $form_state['wizard_info']['object name'];
+  $prev = wizard_helper_trail_previous($form_state['step'], $form_state[$wizard_name]);
+  if ($prev) {
+    $form['buttons']['previous']['#next'] = $prev;
+  }
 }
 
 /**
@@ -297,9 +302,15 @@ function wizard_helper_set_context($wizard, $step, $js) {
   // We only do this for valid sessions.
   if (!empty($user->sid)) {
 
-    // If no step is provided, but they have a previous context, then send them
-    // to the correct spot and provide a message if need be.
-    if (!$step && !empty($wizard['object']) && $wizard['object']['step']) {
+    // If no step is provided, but they have a previous context that isn't
+    // on the start page, then send them to the correct spot and provide a
+    // message if need be.
+    if (
+      !$step &&
+      !empty($wizard['object']) &&
+      !empty($wizard['object']['step']) &&
+      ($wizard['object']['step'] != $wizard['start'])
+    ) {
 
       // If the wizard wishes to say something to the user.
       if (!empty($wizard['restore message'])) {
@@ -339,17 +350,9 @@ function wizard_helper_wizard($step = '', $js = '') {
     // Remember the last page we were on.
     $previous_step = isset($wizard['object']['step']) ? $wizard['object']['step'] : '';
 
-    // Set the current context.
-    if ($step && (empty($wizard['object']['step']) || ($step != $wizard['object']['step']))) {
-      $wizard['object']['step'] = $step;
-      wizard_helper_cache_set($wizard, $wizard['object']);
-    }
-
-    // If there is no step set at this point.
-    if (empty($step) && !empty($wizard['pages'])) {
-      // Set the step to the first page.
-      reset($wizard['pages']);
-      $step = key($wizard['pages']);
+    // If there is no step set at this point, then set it to the start.
+    if (empty($step)) {
+      $step = $wizard['start'];
     }
 
     // Make sure there are pages.
@@ -362,14 +365,15 @@ function wizard_helper_wizard($step = '', $js = '') {
     wizard_helper_check_access_redirect($wizard, $step);
 
     // Make sure the current page is in the step trail.
-    if (wizard_helper_trail_add($wizard, $previous_step, $step)) {
-      wizard_helper_cache_set($wizard, $wizard['object']);
-    }
+    wizard_helper_trail_add($wizard, $previous_step, $step);
 
     // If there is already output, then return it here.
     if (!empty($wizard['output'])) {
       return $wizard['output'];
     }
+
+    // Set the step.
+    $wizard['object']['step'] = $step;
 
     // Return the wizard helper form.
     return wizard_helper_form($wizard, $step, $js);
@@ -692,15 +696,18 @@ function wizard_helper_trail_add(&$wizard, $current_step, $new_step) {
  * @return string
  *   The step before the current step.
  */
-function wizard_helper_trail_previous(&$wizard) {
-  $current_step_id = array_search($wizard['object']['step'], $wizard['object']['step_trail']);
-  if ($current_step_id > 0) {
-    return $wizard['object']['step_trail'][$current_step_id - 1];
+function wizard_helper_trail_previous($step, $wizard) {
+  if (empty($step) || empty($wizard['step_trail'])) {
+    return NULL;
   }
-  elseif (!empty($wizard['object']['step_trail'][0])) {
-    return $wizard['object']['step_trail'][0];
+  $current_step_id = array_search($step, $wizard['step_trail']);
+  if ($current_step_id > 0) {
+    return $wizard['step_trail'][$current_step_id - 1];
+  }
+  elseif (!empty($wizard['step_trail'][0])) {
+    return $wizard['step_trail'][0];
   }
   else {
-    return $wizard['object']['step'];
+    return $step;
   }
 }
