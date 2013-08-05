@@ -466,7 +466,6 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
     $insert_value = array(
       'wizard' => wizard_helper_cache_name($wizard),
       'time' => time(),
-      // This must be serialized to save objects.
       'data' => $data,
     );
     if ($save_sid) {
