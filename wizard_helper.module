@@ -437,6 +437,7 @@ function wizard_helper_cache_name($wizard) {
   if (!empty($wizard['context id'])) {
     $name .= '_' . $wizard['context id'];
   }
+  $name .= '_' . session_id();
   return $name;
 }
 
@@ -452,9 +453,10 @@ function wizard_helper_cache_name($wizard) {
  *   with a direct link containing the mongo _id.
  */
 function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
-  // Always set the ctools cache.
-  ctools_include('object-cache');
-  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
+
+  // Set the cache.
+  $cid = wizard_helper_cache_name($wizard);
+  cache_set($cid, $value);
 
   // If the cache type is mongo, then save to mongo too.
   if ($wizard['cache_type'] == 'mongo') {
@@ -469,7 +471,7 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
 
     // Update required values.
     $insert_value = array(
-      'wizard' => wizard_helper_cache_name($wizard),
+      'wizard' => $cid,
       'time' => time(),
       'data' => $data,
     );
@@ -505,16 +507,16 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  *   The cached data array.
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
-  ctools_include('object-cache');
-  $cache = ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
+  $cid = wizard_helper_cache_name($wizard);
+  $cache = cache_get($cid);
   if ($cache) {
-    return $cache;
+    return $cache->data;
   }
   elseif ($wizard['cache_type'] == 'mongo') {
 
     // Get the cache from mongo.
     $criteria = array(
-      'wizard' => wizard_helper_cache_name($wizard),
+      'wizard' => $cid,
     );
     if ($_id) {
       $criteria['_id'] = new MongoId($_id);
@@ -562,12 +564,14 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
  *   otherwise the session id will be used.
  */
 function wizard_helper_cache_clear($wizard, $_id = NULL) {
-  ctools_include('object-cache');
-  ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
+
+  // Clear the cache.
+  $cid = wizard_helper_cache_name($wizard);
+  cache_set($cid, array());
 
   if ($wizard['cache_type'] == 'mongo') {
     $criteria = array(
-      'wizard' => wizard_helper_cache_name($wizard),
+      'wizard' => $cid,
     );
     if ($_id) {
       $criteria['_id'] = new MongoId($_id);
