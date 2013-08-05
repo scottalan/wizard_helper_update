@@ -452,6 +452,11 @@ function wizard_helper_cache_name($wizard) {
  *   with a direct link containing the mongo _id.
  */
 function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
+  // Always set the ctools cache.
+  ctools_include('object-cache');
+  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
+
+  // If the cache type is mongo, then save to mongo too.
   if ($wizard['cache_type'] == 'mongo') {
     $_id = (!empty($value['_id'])) ? $value['_id'] : NULL;
 
@@ -486,10 +491,6 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
       $value['_id'] = $insert_value['_id'];
     }
   }
-  // The default storage method is ctools cache. Set this cache even when also
-  // saving to mongo.
-  ctools_include('object-cache');
-  ctools_object_cache_set('wizard_helper', wizard_helper_cache_name($wizard), $value);
 }
 
 /**
@@ -504,13 +505,12 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  *   The cached data array.
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
-  if ($wizard['cache_type'] == 'mongo') {
-    // Check ctools cache first. If it doesn't exist, then check mongo.
-    ctools_include('object-cache');
-    $cache = ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
-    if ($cache) {
-      return $cache;
-    }
+  ctools_include('object-cache');
+  $cache = ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
+  if ($cache) {
+    return $cache;
+  }
+  elseif ($wizard['cache_type'] == 'mongo') {
 
     // Get the cache from mongo.
     $criteria = array(
@@ -546,15 +546,10 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
         return $document;
       }
     }
+  }
 
-    // Nothing cached.
-    return array();
-  }
-  else {
-    // The default storage method is ctools cache.
-    ctools_include('object-cache');
-    return ctools_object_cache_get('wizard_helper', wizard_helper_cache_name($wizard));
-  }
+  // Nothing cached.
+  return array();
 }
 
 /**
@@ -567,6 +562,9 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
  *   otherwise the session id will be used.
  */
 function wizard_helper_cache_clear($wizard, $_id = NULL) {
+  ctools_include('object-cache');
+  ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
+
   if ($wizard['cache_type'] == 'mongo') {
     $criteria = array(
       'wizard' => wizard_helper_cache_name($wizard),
@@ -582,11 +580,7 @@ function wizard_helper_cache_clear($wizard, $_id = NULL) {
     }
 
     $collection = mongodb_collection('group_registration_cache');
-    return $collection->remove($criteria);
-  }
-  else {
-    ctools_include('object-cache');
-    ctools_object_cache_clear('wizard_helper', wizard_helper_cache_name($wizard));
+    $collection->remove($criteria);
   }
 }
 
