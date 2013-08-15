@@ -375,6 +375,9 @@ function wizard_helper_wizard($step = '', $js = '') {
     // Set the step.
     $wizard['object']['step'] = $step;
 
+    // Set the cache.
+    wizard_helper_cache_set($wizard, $wizard['object']);
+
     // Return the wizard helper form.
     return wizard_helper_form($wizard, $step, $js);
   }
@@ -690,6 +693,8 @@ function wizard_helper_trail_add(&$wizard, $current_step, $new_step) {
 /**
  * Determine the step that was accessed prior to the current step.
  *
+ * @param string $step
+ *   The current step.
  * @param array $wizard
  *   The wizard object.
  *
