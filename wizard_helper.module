@@ -438,13 +438,23 @@ function wizard_helper_goto($wizard, $step = '') {
 
 /**
  * Gets the name of the cache.
+ *
+ * @param array $wizard
+ *   The wizard data.
+ * @param boolean $include_sid
+ *   Whether the data should be exclusive to this session.
+ *
+ * @return string
+ *   The registration cache name.
  */
-function wizard_helper_cache_name($wizard) {
+function wizard_helper_cache_name($wizard, $include_sid = TRUE) {
   $name = $wizard['object name'];
   if (!empty($wizard['context id'])) {
     $name .= '_' . $wizard['context id'];
   }
-  $name .= '_' . session_id();
+  if ($include_sid) {
+    $name .= '_' . session_id();
+  }
   return $name;
 }
 
@@ -460,27 +470,31 @@ function wizard_helper_cache_name($wizard) {
  *   with a direct link containing the mongo _id.
  */
 function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
+  // Callback before saving data.
+  $save_data = $value;
+  if (!empty($wizard['wizard before save'])) {
+    $wizard['wizard before save']($save_data);
+  }
 
   // Set the cache.
-  $cid = wizard_helper_cache_name($wizard);
-  cache_set($cid, $value);
+  $cid = wizard_helper_cache_name($wizard, $save_sid);
+  cache_set($cid, $save_data);
 
   // If the cache type is mongo, then save to mongo too.
   if ($wizard['cache_type'] == 'mongo') {
-    $_id = (!empty($value['_id'])) ? $value['_id'] : NULL;
+    $_id = (!empty($save_data['_id'])) ? $save_data['_id'] : NULL;
 
     // Unset values that are not serialized.
-    $data = $value;
-    unset($data['_id']);
-    unset($data['sid']);
-    unset($data['wizard']);
-    unset($data['time']);
+    unset($save_data['_id']);
+    unset($save_data['sid']);
+    unset($save_data['wizard']);
+    unset($save_data['time']);
 
     // Update required values.
     $insert_value = array(
       'wizard' => $cid,
       'time' => time(),
-      'data' => $data,
+      'data' => $save_data,
     );
     if ($save_sid) {
       $insert_value['sid'] = session_id();
@@ -514,10 +528,10 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  *   The cached data array.
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
-  $cid = wizard_helper_cache_name($wizard);
+  $cid = wizard_helper_cache_name($wizard, empty($_id));
   $cache = cache_get($cid);
   if ($cache) {
-    return $cache->data;
+    $document = $cache->data;
   }
   elseif ($wizard['cache_type'] == 'mongo') {
 
@@ -549,16 +563,22 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
 
       if ($data) {
         // Merge the main content back into the document.
-        return array_merge($data, $document);
-      }
-      else {
-        return $document;
+        $document = array_merge($data, $document);
       }
     }
   }
 
   // Nothing cached.
-  return array();
+  if (empty($document)) {
+    $document = array();
+  }
+
+  // Callback after loading data.
+  if (!empty($wizard['wizard after load'])) {
+    $wizard['wizard after load']($document);
+  }
+
+  return $document;
 }
 
 /**
@@ -573,7 +593,7 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
 function wizard_helper_cache_clear($wizard, $_id = NULL) {
 
   // Clear the cache.
-  $cid = wizard_helper_cache_name($wizard);
+  $cid = wizard_helper_cache_name($wizard, empty($_id));
   cache_set($cid, array());
 
   if ($wizard['cache_type'] == 'mongo') {
