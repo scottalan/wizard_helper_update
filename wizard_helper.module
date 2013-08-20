@@ -529,10 +529,15 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
   $cid = wizard_helper_cache_name($wizard, empty($_id));
-  $cache = cache_get($cid);
-  if ($cache) {
-    $document = $cache->data;
+
+  // Try to load from cache.
+  if (empty($_id)) {
+    $cache = cache_get($cid);
+    if ($cache) {
+      $document = $cache->data;
+    }
   }
+
   elseif ($wizard['cache_type'] == 'mongo') {
 
     // Get the cache from mongo.
