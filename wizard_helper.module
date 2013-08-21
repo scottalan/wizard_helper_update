@@ -537,7 +537,6 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
       $document = $cache->data;
     }
   }
-
   elseif ($wizard['cache_type'] == 'mongo') {
 
     // Get the cache from mongo.
