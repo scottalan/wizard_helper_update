@@ -453,7 +453,10 @@ function wizard_helper_cache_name($wizard, $include_sid = TRUE) {
     $name .= '_' . $wizard['context id'];
   }
   if ($include_sid) {
-    $name .= '_' . session_id();
+    $session_id = session_id();
+    if (!empty($session_id)) {
+      $name .= '_' . $session_id;
+    }
   }
   return $name;
 }
@@ -494,7 +497,7 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
     $insert_value = array(
       'wizard' => $cid,
       'time' => time(),
-      'data' => $save_data,
+      'data' => serialize($save_data),
     );
     if ($save_sid) {
       $insert_value['sid'] = session_id();
