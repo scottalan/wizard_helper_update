@@ -490,12 +490,15 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
     // Unset values that are not serialized.
     unset($save_data['_id']);
     unset($save_data['sid']);
-    unset($save_data['wizard']);
     unset($save_data['time']);
+
+    // Set the wizard value.
+    $wizard_id = !empty($save_data['wizard']) ? $save_data['wizard'] : $cid;
+    unset($save_data['wizard']);
 
     // Update required values.
     $insert_value = array(
-      'wizard' => $cid,
+      'wizard' => $wizard_id,
       'time' => time(),
       'data' => serialize($save_data),
     );
