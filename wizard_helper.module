@@ -377,6 +377,14 @@ function wizard_helper_wizard($step = '', $js = '') {
       $step = $wizard['start'];
     }
 
+    // Make sure we are supposed to be on this page.
+    $next_page = wizard_helper_get_next_page($wizard, $step);
+    if ($next_page !== $step) {
+
+      // Go to this page.
+      wizard_helper_goto($wizard, $next_page);
+    }
+
     // Make sure the current page is in the step trail.
     wizard_helper_trail_add($wizard, $previous_step, $step);
 
