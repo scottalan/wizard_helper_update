@@ -43,7 +43,6 @@ function wizard_helper_info() {
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
           $wizard['cancel path'] = isset($wizard['cancel path']) ? $wizard['cancel path'] : $path;
           $wizard['return path'] = isset($wizard['return path']) ? $wizard['return path'] : $path;
-          $wizard['access'] = TRUE;
 
           // Iterate though the pages and assign page ids.
           if (!empty($wizard['pages'])) {
@@ -127,21 +126,16 @@ function wizard_helper_theme() {
 /**
  * This function will include a form from the wizard_helper.
  *
+ * @param array $wizard
+ *   The wizard settings object.
  * @param string $form_id
  *   The full name of the form file to include.
- * @param boolean $force_load
- *   If TRUE, will load the file even if it's not a step in the wizard.
  */
-function wizard_helper_include_form($form_id, $force_load = FALSE) {
-  // Get the wizard information.
-  $info = wizard_helper_info();
-  foreach ($info as $path => $wizard) {
-    // Determine if the page should be loaded.
-    if ($force_load || in_array($form_id, $wizard['pageids'])) {
-      $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $form_id . '.inc';
-      if (file_exists($file)) {
-        require_once $file;
-      }
+function wizard_helper_include_form($wizard, $form_id) {
+  if (in_array($form_id, $wizard['pageids'])) {
+    $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $form_id . '.inc';
+    if (file_exists($file)) {
+      require_once $file;
     }
   }
 }
@@ -191,7 +185,7 @@ function wizard_helper_page_form(&$form_state, $form_id, $args) {
   $form = array();
   ctools_include('wizard');
   ctools_wizard_wrapper($form, $form_state);
-  wizard_helper_include_form($form_id);
+  wizard_helper_include_form($form_state['wizard_info'], $form_id);
   if (function_exists($form_id)) {
     $form_id($form, $form_state);
   }
@@ -221,7 +215,7 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
 
   // Set all the pages for this wizard.
   $forms = array();
-  foreach( $wizard['pageids'] as $page => $id ) {
+  foreach ($wizard['pageids'] as $page => $id ) {
     $forms[$page] = array('form id' => $id);
     $file = $wizard['wizard_path'] . '/' . $id . '.inc';
     // @todo - this should only be checked when the for is created - wasting
@@ -284,10 +278,44 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
  *   The form_state array object.
  */
 function wizard_helper_wrapper(&$form, &$form_state) {
+
+  // Add another submit handler.
+  $form['#submit'][] = 'wizard_helper_submit';
   $wizard_name = $form_state['wizard_info']['object name'];
   $prev = wizard_helper_trail_previous($form_state['step'], $form_state[$wizard_name]);
   if ($prev) {
     $form['buttons']['previous']['#next'] = $prev;
+  }
+}
+
+/**
+ * Called when a wizard form is submitted.
+ *
+ * @param array $form
+ *   The wizard form.
+ * @param array $form_state
+ *   The form_state of the submission.
+ */
+function wizard_helper_submit(&$form, &$form_state) {
+
+  // See if they clicked the next button.
+  if (
+    isset($form_state['clicked_button']['#wizard type']) &&
+    ($form_state['clicked_button']['#wizard type'] === 'next')
+  ) {
+
+    // Get the wizard.
+    $wizard = &$form_state['wizard_info'];
+
+    // Set the object to the latest version.
+    $wizard['object'] = &$form_state[$wizard['object name']];
+
+    // See if this should be the next page.
+    $next_page = wizard_helper_get_next_page($wizard, $form_state['clicked_button']['#next']);
+    if ($next_page && $next_page !== $form_state['clicked_button']['#next']) {
+      $form_state['clicked_button']['#next'] = $next_page;
+      $form_state['redirect'] = ctools_wizard_get_path($form_state['form_info'], $next_page);
+    }
   }
 }
 
@@ -341,12 +369,6 @@ function wizard_helper_wizard($step = '', $js = '') {
       $wizard['object'] = array();
     }
 
-    // Call the wizard callback to alter the info at runtime.
-    if (isset($wizard['wizard callback'])) {
-      $function = $wizard['wizard callback'];
-      $function($step, $wizard);
-    }
-
     // Remember the last page we were on.
     $previous_step = isset($wizard['object']['step']) ? $wizard['object']['step'] : '';
 
@@ -355,17 +377,20 @@ function wizard_helper_wizard($step = '', $js = '') {
       $step = $wizard['start'];
     }
 
+    // Make sure the current page is in the step trail.
+    wizard_helper_trail_add($wizard, $previous_step, $step);
+
+    // Call the wizard callback to alter the info at runtime.
+    if (isset($wizard['wizard callback'])) {
+      $function = $wizard['wizard callback'];
+      $function($step, $wizard);
+    }
+
     // Make sure there are pages.
     if (empty($wizard['pages'])) {
       drupal_not_found();
       return;
     }
-
-    // Make sure they have access or follow a redirect.
-    wizard_helper_check_access_redirect($wizard, $step);
-
-    // Make sure the current page is in the step trail.
-    wizard_helper_trail_add($wizard, $previous_step, $step);
 
     // If there is already output, then return it here.
     if (!empty($wizard['output'])) {
@@ -387,30 +412,48 @@ function wizard_helper_wizard($step = '', $js = '') {
 }
 
 /**
- * Check a step's access function to redirect, lockout page, or continue to display.
+ * Determines what the next page should be.
  *
  * @param array $wizard
  *   The wizard object.
  * @param string $step
  *   The current step.
+ *
+ * @return string
+ *   The next step in the wizard.
  */
-function wizard_helper_check_access_redirect(&$wizard, $step) {
-  // Check for an access function.
-  wizard_helper_include_form($wizard['object name'] . '_' . $step);
-  $access_function = $wizard['object name'] . '_' . $step . '_access';
-  if (function_exists($access_function)) {
-    $wizard['access'] = $access_function($wizard);
-  }
+function wizard_helper_get_next_page(&$wizard, $step) {
+
+  // Set the next and previous steps.
+  $next_step = $prev_step = $step;
+
+  // Iterate until the next step isn't a string.
+  do {
+
+    // Set the previous step.
+    $prev_step = $next_step;
+
+    // Check for an access function.
+    wizard_helper_include_form($wizard, $wizard['object name'] . '_' . $next_step);
+    $access_function = $wizard['object name'] . '_' . $next_step . '_access';
+    $next_step = function_exists($access_function) ? $access_function($wizard) : TRUE;
+
+  } while (is_string($next_step));
 
   // Make sure we have access.
-  if (empty($wizard['access'])) {
+  if (empty($next_step) && ($prev_step === $step)) {
     drupal_access_denied();
     module_invoke_all('exit');
     exit();
   }
-  elseif (is_string($wizard['access'])) {
-    wizard_helper_goto($wizard, $wizard['access']);
+  else {
+
+    // Set the step for this page.
+    $next_step = $prev_step;
   }
+
+  // Return the next step.
+  return $next_step;
 }
 
 /**
@@ -517,6 +560,11 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
     else {
       // Create new cache.
       $collection->insert($insert_value);
+      if (empty($insert_value['_id'])) {
+        // TODO: This shouldn't be necessary if the insert query can wait for
+        // the _id to be returned.
+        $insert_value = $collection->findOne($insert_value);
+      }
       $value['_id'] = $insert_value['_id'];
     }
   }
