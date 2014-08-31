@@ -313,8 +313,17 @@ function wizard_helper_submit(&$form, &$form_state) {
     // See if this should be the next page.
     $next_page = wizard_helper_get_next_page($wizard, $form_state['clicked_button']['#next']);
     if ($next_page && $next_page !== $form_state['clicked_button']['#next']) {
-      $form_state['clicked_button']['#next'] = $next_page;
-      $form_state['redirect'] = ctools_wizard_get_path($form_state['form_info'], $next_page);
+
+      // See if this is in our pages array.
+      if (isset($wizard['pages'][$next_page])) {
+        $form_state['clicked_button']['#next'] = $next_page;
+        $form_state['redirect'] = ctools_wizard_get_path($form_state['form_info'], $next_page);
+      }
+      else {
+
+        // Otherwise, change our wizard type.
+        $form_state['clicked_button']['#wizard type'] = $next_page;
+      }
     }
   }
 }
