@@ -265,6 +265,11 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
 
   $form_info['wrapper'] = 'wizard_helper_wrapper';
 
+  // Establish the form state if it is provided.
+  if (!empty($wizard['form_state'])) {
+    $form_state = array_merge_recursive($form_state, $wizard['form_state']);
+  }
+
   // Create our multistep drupal form.
   return ctools_wizard_multistep_form($form_info, $step, $form_state);
 }
@@ -390,8 +395,22 @@ function wizard_helper_wizard($step = '', $js = '') {
     $next_page = wizard_helper_get_next_page($wizard, $step);
     if ($next_page !== $step) {
 
-      // Go to this page.
-      wizard_helper_goto($wizard, $next_page);
+      // See if this is in our pages array.
+      if (isset($wizard['pages'][$next_page])) {
+
+        // Go to this page.
+        wizard_helper_goto($wizard, $next_page);
+      }
+      else {
+
+        // Set the wizard form state.
+        $wizard['form_state'] = array(
+          'executed' => TRUE,
+          'clicked_button' => array(
+            '#wizard type' => $next_page
+          ),
+        );
+      }
     }
 
     // Make sure the current page is in the step trail.
