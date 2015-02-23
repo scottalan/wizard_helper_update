@@ -8,7 +8,7 @@
 /**
  * Define what wizards your module implements.
  *
- * @return
+ * @return array
  *    An array of wizards with the information for each wizard witin each array
  *    entry.  The key for the array should be actual hook_menu paths that will
  *    be defined to handle the form submissions of your wizard.  The menu "title",

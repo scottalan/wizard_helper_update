@@ -8,6 +8,9 @@
  * function hook_wizard_info
  */
 
+
+include_once 'includes/wizard_helper_preprocess.inc';
+
 /**
  * Returns the wizard information.
  */
@@ -35,26 +38,31 @@ function wizard_helper_info() {
           $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
           $wizard['access callback'] = isset($wizard['access callback']) ? $wizard['access callback'] : 'user_access';
           $wizard['access arguments'] = isset($wizard['access arguments']) ? $wizard['access arguments'] : array('access content');
-          $wizard['title'] = isset($wizard['title']) ? $wizard['title'] : '';
-          $wizard['wizard_path'] = isset($wizard['wizard_path']) ? $wizard['wizard_path'] : drupal_get_path('module', $module) . '/' . $wizard['id'];
+          $wizard['wizard path'] = isset($wizard['wizard path']) ? $wizard['wizard path'] : $wizard['id'];
+          $wizard['module path'] = isset($wizard['module path']) ? $wizard['module path'] : drupal_get_path('module', $module) . '/' . $wizard['wizard path'];
           $wizard['form id'] = isset($wizard['form id']) ? $wizard['form id'] : $wizard['module'] . '_' . $wizard['id'];
           $wizard['object name'] = isset($wizard['object name']) ? $wizard['object name'] : $wizard['form id'];
           $wizard['context id'] = 0;
+          $wizard['theme'] = isset($wizard['theme']) ? $wizard['theme'] : 'wizard_helper_page';
           $wizard['pageids'] = isset($wizard['pageids']) ? $wizard['pageids'] : array();
           $wizard['cancel path'] = isset($wizard['cancel path']) ? $wizard['cancel path'] : $path;
           $wizard['return path'] = isset($wizard['return path']) ? $wizard['return path'] : $path;
+          $wizard['complete path'] = isset($wizard['complete path']) ? $wizard['complete path'] : $path;
+          $wizard['cache type'] = isset($wizard['cache type']) ? $wizard['cache type'] : 'session';
+          $wizard['register'] = isset($wizard['register']) ? $wizard['register'] : FALSE;
 
           // Iterate though the pages and assign page ids.
           if (!empty($wizard['pages'])) {
-            foreach ($wizard['pages'] as $page => $title) {
+            foreach ($wizard['pages'] as $page => $data) {
               if (!isset($wizard['pageids'][$page])) {
                 $wizard['pageids'][$page] = $wizard['form id'] . '_' . $page;
               }
             }
           }
 
-          // The start page.
-          $wizard['start'] = reset($wizard['pages']);
+          reset($wizard['pages']);
+          // This key is our starting point.
+          $wizard['start'] =  key($wizard['pages']);
         }
         $info = array_merge($info, $result);
       }
@@ -106,18 +114,27 @@ function wizard_helper_theme() {
     // Get all the wizard helper page ids.
     foreach ($wizard['pageids'] as $page => $id) {
 
+      $file = DRUPAL_ROOT . '/' . $wizard['module path'] . '/' . $id . '.tpl.php';
       // Add the template if the file exists.
-      if (file_exists(getcwd() . '/' . $wizard['wizard_path'] . '/' . $id . '.tpl.php')) {
+//      if (file_exists(getcwd() . '/' . $wizard['wizard path'] . '/' . $id . '.tpl.php')) {
+      if (file_exists(DRUPAL_ROOT . '/' . $wizard['module path'] . '/' . $id . '.tpl.php')) {
 
         // Add the template.
         $themes[$id] = array(
+          'render element' => 'form',
           'template'  => $id,
-          'path' => $wizard['wizard_path'],
-          'arguments' => array('form' => NULL)
+          'path' => $wizard['module path'],
         );
       }
     }
   }
+
+  // Add a 'wrapper' template for the wizard. This defaults to 'wizard_helper_page'.
+  $themes[$wizard['theme']] = array(
+    'render element' => 'form',
+    'template' => $wizard['theme'],
+    'path' => drupal_get_path('module', $wizard['module']) . '/theme',
+  );
 
   // Return the themes.
   return $themes;
@@ -133,7 +150,7 @@ function wizard_helper_theme() {
  */
 function wizard_helper_include_form($wizard, $form_id) {
   if (in_array($form_id, $wizard['pageids'])) {
-    $file = getcwd() . '/' . $wizard['wizard_path'] . '/' . $form_id . '.inc';
+    $file = DRUPAL_ROOT . drupal_get_path('module', $wizard['module']) . '/' . $wizard['wizard path'] . '/' . $form_id . '.inc';
     if (file_exists($file)) {
       require_once $file;
     }
@@ -144,17 +161,35 @@ function wizard_helper_include_form($wizard, $form_id) {
  * Implements hook_forms().
  */
 function wizard_helper_forms($form_id, $args) {
+  // @todo: Minimize what get called here if we can do an if($form_id)...
   $forms = array();
   $info = wizard_helper_info();
   foreach ($info as $path => $wizard) {
     foreach ($wizard['pageids'] as $page => $id) {
       $forms[$id] = array(
         'callback' => 'wizard_helper_page_form',
-        'callback arguments' => array($form_id, $args)
+        'callback arguments' => array($form_id, $args),
       );
     }
   }
   return $forms;
+}
+
+/**
+ * Adds a common form function for all wizard forms.  This fixes several
+ * issues with adding AHAH within your forms.
+ */
+function wizard_helper_page_form(&$form_state, $form_id) {
+  $wizard = $form_state['wizard_info'];
+  // Include the form.
+  $form = array();
+  ctools_include('wizard');
+  ctools_wizard_wrapper($form, $form_state);
+  ctools_form_include($form_state, $form_id, $wizard['module'], $wizard['wizard path']);
+  if (function_exists($form_id)) {
+    $form_id($form, $form_state);
+  }
+  return $form;
 }
 
 /**
@@ -177,25 +212,20 @@ function wizard_helper_get_info() {
 }
 
 /**
- * Adds a common form function for all wizard forms.  This fixes several
- * issues with adding AHAH within your forms.
+ * @param string $wizard
+ * @param string $step
+ * @param bool $js
+ * @param array $form_state
+ * @return string
  */
-function wizard_helper_page_form(&$form_state, $form_id, $args) {
-  // Include the form.
-  $form = array();
-  ctools_include('wizard');
-  ctools_wizard_wrapper($form, $form_state);
-  wizard_helper_include_form($form_state['wizard_info'], $form_id);
-  if (function_exists($form_id)) {
-    $form_id($form, $form_state);
-  }
-  return $form;
-}
-
-function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
+function wizard_helper_form(&$wizard, $step, $js, $form_state = array()) {
   // Include the ctools wizard stuff.
-  ctools_include('wizard');
-  ctools_include('ajax');
+  if ($js) {
+    ctools_include('modal');
+    ctools_include('ajax');
+    // Add CTools' javascript to the page.
+    ctools_modal_add_js();
+  }
 
   // Setup the form_state.
   $form_state = array_merge(array(
@@ -217,12 +247,19 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   $forms = array();
   foreach ($wizard['pageids'] as $page => $id ) {
     $forms[$page] = array('form id' => $id);
-    $file = $wizard['wizard_path'] . '/' . $id . '.inc';
+    $file = $wizard['module path'] . '/' . $id . '.inc';
     // @todo - this should only be checked when the for is created - wasting
     // cycles checking for files that are never loaded.
-    if (file_exists(getcwd() . '/' . $file)) {
+    if (file_exists(DRUPAL_ROOT . '/' . $file)) {
       $forms[$page]['include'] = $file;
     }
+    // We need to add our form submit function. This gets added before
+    // ctools_wizard_submit().
+    $forms[$page]['submit'] = 'wizard_helper_submit';
+
+    // Include custom wrapper functions that can be used to alter the form before
+    // ctools_wizard_wrapper() returns it.
+    $forms[$page]['wrapper'] = $wizard['form id'] . '_wrapper';
   }
 
   // Setup our CTools multistep form.
@@ -254,15 +291,18 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
     array_intersect_key($wizard, $defaults)
   );
 
-  // If there is no step, then set it to the first item in the array.
-  if (!$step) {
-    reset($pages);
-    $step = key($pages);
-  }
+  // Allow editing the form info.
+  drupal_alter('wizard_helper_form', $form_info);
 
   // Store the registration object in $_SESSION.
-  $_SESSION[$wizard['object name']] = $wizard['object'];
+  if (!isset($_SESSION[$wizard['object name']])) {
+    $_SESSION[$wizard['object name']] = $wizard['object'];
+  }
+  else {
+    $_SESSION[$wizard['object name']] = array_merge($_SESSION[$wizard['object name']], $wizard['object']);
+  }
 
+  // @todo: Figure out why this breaks the prev button (Back).
   $form_info['wrapper'] = 'wizard_helper_wrapper';
 
   // Establish the form state if it is provided.
@@ -271,7 +311,52 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
   }
 
   // Create our multistep drupal form.
-  return ctools_wizard_multistep_form($form_info, $step, $form_state);
+  ctools_include('wizard');
+  $form = ctools_wizard_multistep_form($form_info, $step, $form_state);
+
+  // Add our page template.
+  $form['#theme'] = array($wizard['theme']);
+
+  // Render the output.
+  $output = drupal_render($form);
+
+  if ($js) {
+    // If javascript is active, we have to use a render array.
+    $commands = array();
+    if ($output === FALSE || !empty($form_state['complete'])) {
+      // @todo: This means there is no form and the wizard is complete. How do
+      // @todo: we want to handle this for the wizard helper.
+      $commands[] = ctools_modal_command_dismiss();
+      $commands[] = ctools_ajax_command_redirect($wizard['complete path']);
+    }
+    else if (!empty($form_state['cancel'])) {
+      // If cancelling, return to the activity.
+      $commands[] = ctools_modal_command_dismiss();
+      $commands[] = ctools_ajax_command_redirect($wizard['cancel path']);
+    }
+    else {
+      $commands = ctools_modal_form_render($form_state, $output);
+    }
+    print ajax_render($commands);
+    exit;
+  }
+  else {
+    if ($output === FALSE || !empty($form_state['complete'])) {
+      // @todo: This means there is no form and the wizard is complete. How do
+      // @todo: we want to handle this for the wizard helper.
+      drupal_goto($wizard['complete path']);
+    }
+    // The wizard has been cancelled.
+    else if (!empty($form_state['cancel'])) {
+      // If we have a cancel path send them there, otherwise send them to the
+      // wizard path. This could be $wizard['wizard redirect'] if set in
+      // hook_wizard_info() or it defaults to the path (key) of the wizard.
+      drupal_goto($wizard['cancel path']);
+    }
+    else {
+      return $output;
+    }
+  }
 }
 
 /**
@@ -279,18 +364,21 @@ function wizard_helper_form($wizard, $step, $js, $form_state = array()) {
  *
  * @param array $form
  *   The form array.
+ *
  * @param array $form_state
  *   The form_state array object.
+ *
+ * @return array
+ *
  */
 function wizard_helper_wrapper(&$form, &$form_state) {
 
-  // Add another submit handler.
-  $form['#submit'][] = 'wizard_helper_submit';
   $wizard_name = $form_state['wizard_info']['object name'];
-  $prev = wizard_helper_trail_previous($form_state['step'], $form_state[$wizard_name]);
+  $prev = wizard_helper_trail_previous($form_state['step'], $form_state[$wizard_name], $form_state['wizard_info']);
   if ($prev) {
     $form['buttons']['previous']['#next'] = $prev;
   }
+  return $form;
 }
 
 /**
@@ -304,16 +392,15 @@ function wizard_helper_wrapper(&$form, &$form_state) {
 function wizard_helper_submit(&$form, &$form_state) {
 
   // See if they clicked the next button.
-  if (
-    isset($form_state['clicked_button']['#wizard type']) &&
-    ($form_state['clicked_button']['#wizard type'] === 'next')
-  ) {
+  if (isset($form_state['clicked_button']['#wizard type']) && ($form_state['clicked_button']['#wizard type'] === 'next')) {
 
     // Get the wizard.
     $wizard = &$form_state['wizard_info'];
 
     // Set the object to the latest version.
     $wizard['object'] = &$form_state[$wizard['object name']];
+
+    wizard_helper_cache_set($wizard, $wizard['object']);
 
     // See if this should be the next page.
     $next_page = wizard_helper_get_next_page($wizard, $form_state['clicked_button']['#next']);
@@ -338,21 +425,21 @@ function wizard_helper_submit(&$form, &$form_state) {
  *
  * @return {string} The step for the user.
  */
-function wizard_helper_set_context($wizard, $step, $js) {
-  global $user;
+function wizard_helper_set_context(&$wizard, $step, $js) {
 
+  $object = $wizard['object'];
+
+//  if (!empty($object) && !in_array($wizard['start'], $object['step_trail'])) {
+//    wizard_helper_cache_clear($wizard);
+//    drupal_goto($wizard['path'] . '/' . $wizard['start'] . '/' . ($js ? $js : 'nojs'));
+//  }
   // We only do this for valid sessions.
-  if (!empty($user->sid)) {
+  if (!empty($_SESSION[$wizard['object name']])) {
 
     // If no step is provided, but they have a previous context that isn't
     // on the start page, then send them to the correct spot and provide a
     // message if need be.
-    if (
-      !$step &&
-      !empty($wizard['object']) &&
-      !empty($wizard['object']['step']) &&
-      ($wizard['object']['step'] != $wizard['start'])
-    ) {
+    if (!$step && !empty($object) && !empty($object['step']) && ($object['step'] != $wizard['start'])) {
 
       // If the wizard wishes to say something to the user.
       if (!empty($wizard['restore message'])) {
@@ -362,8 +449,21 @@ function wizard_helper_set_context($wizard, $step, $js) {
       }
 
       // Now goto the correct context.
-      drupal_goto($wizard['path'] . '/' . $wizard['object']['step'] . '/' . ($js ? $js : 'nojs'));
+      drupal_goto($wizard['path'] . '/' . $object['step'] . '/' . ($js ? $js : 'nojs'));
     }
+//    else if ($step && !empty($object) && !empty($object['step'])) {
+//      $prev = wizard_helper_trail_previous($step, $object);
+//      $next = wizard_helper_get_next_page($wizard, $prev);
+//      $pages = array_keys($wizard['pages']);
+//      $diff = array_intersect_key($pages, $wizard['object']['step_trail']);
+//      $next_step = end($diff);
+//      if ($diff != $wizard['object']['step_trail']) {
+//        // Go to this page.
+//        wizard_helper_goto($wizard, $next_step);
+////        $wizard['object']['step_trail'] = $diff;
+////        $wizard['object']['step'] = $next_step;
+//      }
+//    }
   }
 }
 
@@ -375,21 +475,10 @@ function wizard_helper_wizard($step = '', $js = '') {
   // Get the wizard information for this path.
   if ($wizard = wizard_helper_get_info()) {
 
-    // Set the correct context for this wizard.
     wizard_helper_set_context($wizard, $step, $js);
-
-    // Make sure we have a context object defined.
-    if (empty($wizard['object'])) {
-      $wizard['object'] = array();
-    }
 
     // Remember the last page we were on.
     $previous_step = isset($wizard['object']['step']) ? $wizard['object']['step'] : '';
-
-    // If there is no step set at this point, then set it to the start.
-    if (empty($step)) {
-      $step = $wizard['start'];
-    }
 
     // Make sure we are supposed to be on this page.
     $next_page = wizard_helper_get_next_page($wizard, $step);
@@ -419,7 +508,9 @@ function wizard_helper_wizard($step = '', $js = '') {
     // Call the wizard callback to alter the info at runtime.
     if (isset($wizard['wizard callback'])) {
       $function = $wizard['wizard callback'];
-      $function($step, $wizard);
+      if (function_exists($function)) {
+        $function($step, $wizard);
+      }
     }
 
     // Make sure there are pages.
@@ -436,7 +527,7 @@ function wizard_helper_wizard($step = '', $js = '') {
     // Set the step.
     $wizard['object']['step'] = $step;
 
-    // Set the cache.
+    // Set the cache so we have the $step we need.
     wizard_helper_cache_set($wizard, $wizard['object']);
 
     // Return the wizard helper form.
@@ -458,7 +549,7 @@ function wizard_helper_wizard($step = '', $js = '') {
  * @return string
  *   The next step in the wizard.
  */
-function wizard_helper_get_next_page(&$wizard, $step) {
+function wizard_helper_get_next_page($wizard, $step) {
 
   // Set the next and previous steps.
   $next_step = $prev_step = $step;
@@ -470,7 +561,7 @@ function wizard_helper_get_next_page(&$wizard, $step) {
     $prev_step = $next_step;
 
     // Check for an access function.
-    wizard_helper_include_form($wizard, $wizard['object name'] . '_' . $next_step);
+    ctools_form_include($form_state, $wizard['form id']. '_' . $next_step, $wizard['module'], $wizard['wizard path']);
     $access_function = $wizard['object name'] . '_' . $next_step . '_access';
     $next_step = function_exists($access_function) ? $access_function($wizard) : TRUE;
 
@@ -531,79 +622,13 @@ function wizard_helper_cache_name($wizard, $include_sid = TRUE) {
   if (!empty($wizard['context id'])) {
     $name .= '_' . $wizard['context id'];
   }
-  if ($include_sid) {
+  else if ($include_sid) {
     $session_id = session_id();
     if (!empty($session_id)) {
       $name .= '_' . $session_id;
     }
   }
   return $name;
-}
-
-/**
- * Set the object cache.
- *
- * @param array $wizard
- *   The wizard object.
- * @param array $value
- *   The cached data to save.
- * @param boolean $save_sid
- *   If false, the data will be saved without a sid and can only be accessed
- *   with a direct link containing the mongo _id.
- */
-function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
-  // Callback before saving data.
-  $save_data = $value;
-  if (!empty($wizard['wizard before save'])) {
-    $wizard['wizard before save']($save_data);
-  }
-
-  // Set the cache.
-  $cid = wizard_helper_cache_name($wizard, $save_sid);
-  cache_set($cid, $save_data);
-
-  // If the cache type is mongo, then save to mongo too.
-  if ($wizard['cache_type'] == 'mongo') {
-    $_id = (!empty($save_data['_id'])) ? $save_data['_id'] : NULL;
-
-    // Unset values that are not serialized.
-    unset($save_data['_id']);
-    unset($save_data['sid']);
-    unset($save_data['time']);
-
-    // Set the wizard value.
-    $wizard_id = !empty($save_data['wizard']) ? $save_data['wizard'] : $cid;
-    unset($save_data['wizard']);
-
-    // Update required values.
-    $insert_value = array(
-      'wizard' => $wizard_id,
-      'time' => time(),
-      'data' => serialize($save_data),
-    );
-    if ($save_sid) {
-      $insert_value['sid'] = session_id();
-    }
-
-    // Initialize mongodb.
-    $collection = mongodb_collection($wizard['mongo_collection']);
-
-    if (!empty($_id)) {
-      // Cache already exists, update it.
-      $criteria = array('_id' => $_id);
-      $collection->update($criteria, $insert_value);
-    }
-    else {
-      // Create new cache.
-      $collection->insert($insert_value);
-      if (empty($insert_value['_id'])) {
-        // TODO: This shouldn't be necessary if the insert query can wait for
-        // the _id to be returned.
-        $insert_value = $collection->findOne($insert_value);
-      }
-      $value['_id'] = $insert_value['_id'];
-    }
-  }
 }
 
 /**
@@ -618,16 +643,35 @@ function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
  *   The cached data array.
  */
 function wizard_helper_cache_get($wizard, $_id = NULL) {
+
   $cid = wizard_helper_cache_name($wizard, empty($_id));
 
-  // Try to load from cache.
-  if (empty($_id)) {
+  if ($wizard['cache type'] == 'session') {
+    $name = $wizard['object name'];
+    $session = wizard_helper_session_exists($name);
+    if ($session) {
+      return $_SESSION[$name];
+    }
+  }
+  else if ($wizard['cache type'] == 'cache') {
     $cache = cache_get($cid);
+
     if ($cache) {
       $document = $cache->data;
     }
   }
-  elseif ($wizard['cache_type'] == 'mongo') {
+  // @todo: Find out why the session gets reset for every step which is why...
+  // this creates multiple entries if using an ajax modal.
+  else if ($wizard['cache type'] == 'ctools') {
+    ctools_include('object-cache');
+    // Get the ctools cache.
+    $ctools_cache = ctools_object_cache_get($wizard['object name'], $wizard['object name']);
+
+    if (!empty($ctools_cache)) {
+      $document = $ctools_cache;
+    }
+  }
+  else if ($wizard['cache type'] == 'mongo') {
 
     // Get the cache from mongo.
     $criteria = array(
@@ -676,6 +720,91 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
 }
 
 /**
+ * Set the object cache.
+ *
+ * @param array $wizard
+ *   The wizard object.
+ * @param array $value
+ *   The cached data to save.
+ * @param boolean $save_sid
+ *   If false, the data will be saved without a sid and can only be accessed
+ *   with a direct link containing the mongo _id.
+ */
+function wizard_helper_cache_set($wizard, &$value, $save_sid = TRUE) {
+  // Callback before saving data.
+  $save_data = $value;
+
+  if (!empty($wizard['wizard before save'])) {
+    $wizard['wizard before save']($save_data);
+  }
+
+  $cid = wizard_helper_cache_name($wizard, $save_sid);
+
+  if ($wizard['cache type'] == 'session') {
+    $name = $wizard['object name'];
+    wizard_helper_session_save($name, $value);
+  }
+  else if ($wizard['cache type'] == 'cache') {
+    // Set the cache.
+    cache_set($cid, $save_data);
+  }
+  // Use ctools object cache.
+  else if ($wizard['cache type'] == 'ctools') {
+    // If we haven't already added it, add the $cid to the cache. This allows us
+    // to clear the object cache later by calling ctools_object_cache_get() and
+    // targeting the specific cache.
+    if (!isset($save_data['cache'])) {
+      $save_data['cache'] = array('name' => $cid, 'obj' => $wizard['object name']);
+    }
+    ctools_include('object-cache');
+    ctools_object_cache_set($wizard['object name'], $wizard['object name'], $save_data);
+  }
+  // Use mongo db.
+  else if ($wizard['cache type'] == 'mongo') {
+
+    $_id = (!empty($save_data['_id'])) ? $save_data['_id'] : NULL;
+
+    // Unset values that are not serialized.
+    unset($save_data['_id']);
+    unset($save_data['sid']);
+    unset($save_data['time']);
+
+    // Set the wizard value.
+    $wizard_id = !empty($save_data['wizard']) ? $save_data['wizard'] : $cid;
+    unset($save_data['wizard']);
+
+    // Update required values.
+    $insert_value = array(
+      'wizard' => $wizard_id,
+      'time' => time(),
+      'data' => serialize($save_data),
+    );
+    if ($save_sid) {
+      $insert_value['sid'] = session_id();
+    }
+
+    // Initialize mongodb.
+    $collection = mongodb_collection($wizard['mongo_collection']);
+
+    if (!empty($_id)) {
+      // Cache already exists, update it.
+      $criteria = array('_id' => $_id);
+      $collection->update($criteria, $insert_value);
+    }
+    else {
+      // Create new cache.
+      $collection->insert($insert_value);
+      if (empty($insert_value['_id'])) {
+        // TODO: This shouldn't be necessary if the insert query can wait for
+        // the _id to be returned.
+        $insert_value = $collection->findOne($insert_value);
+      }
+      $value['_id'] = $insert_value['_id'];
+    }
+  }
+}
+
+/**
  * Clear the object cache.
  *
  * @param array $wizard
@@ -686,11 +815,18 @@ function wizard_helper_cache_get($wizard, $_id = NULL) {
  */
 function wizard_helper_cache_clear($wizard, $_id = NULL) {
 
-  // Clear the cache.
   $cid = wizard_helper_cache_name($wizard, empty($_id));
-  cache_set($cid, array());
 
-  if ($wizard['cache_type'] == 'mongo') {
+  if ($wizard['cache type'] == 'session') {
+    wizard_helper_session_delete($wizard['object name']);
+  }
+  else if ($wizard['cache type'] == 'ctools') {
+    ctools_include('object-cache');
+    // Set the serialized data array to an empty array.
+    ctools_object_cache_clear($wizard['object name'], $wizard['object name']);
+  }
+  else if ($wizard['cache type'] == 'mongo') {
+
     $criteria = array(
       'wizard' => $cid,
     );
@@ -723,15 +859,20 @@ function wizard_helper_next(&$form_state) {
 function wizard_helper_finish(&$form_state) {
   $wizard = $form_state['wizard_info'];
   // Remove the cache object.
-  if (empty($form_state[$wizard['object name']]['save_cache'])) {
+  if (empty($form_state['wizard_info']['save cache'])) {
+    // @todo: uncomment this...
     wizard_helper_cache_clear($wizard);
   }
   else {
-    // Remove the sid but save the wizard.
-    wizard_helper_cache_set($wizard, $wizard['object'], FALSE);
+    wizard_helper_cache_set($wizard, $wizard['object']);
   }
   // Run finalization processes.
   $function = $wizard['wizard finish'];
+  $file = DRUPAL_ROOT . '/' . $wizard['module path'] . '/' . $wizard['wizard finish'] . '.inc';
+  // Try to include a file by the same name.
+  if (file_exists($file)) {
+    require_once($file);
+  }
   if (function_exists($function)) {
     $function($form_state[$wizard['object name']]);
   }
@@ -750,8 +891,10 @@ function wizard_helper_cancel(&$form_state) {
     drupal_set_message($wizard['cancel message']);
   }
 
+  $form_state['cancel'] = TRUE;
+
   // Call a callback for the wizard.
-  if (is_callable($wizard['wizard cancel'])) {
+  if (isset($wizard['wizard cancel']) && is_callable($wizard['wizard cancel'])) {
     $wizard['wizard cancel']($wizard);
   }
 }
@@ -829,4 +972,23 @@ function wizard_helper_trail_previous($step, $wizard) {
   else {
     return $step;
   }
+}
+
+
+function wizard_helper_session_save($object_id, $value) {
+
+  if (!isset($_SESSION)) {
+    drupal_session_start();
+  }
+  $_SESSION[$object_id] = $value;
+}
+
+function wizard_helper_session_exists($object_id) {
+
+  return !empty($_SESSION[$object_id]);
+}
+
+function wizard_helper_session_delete($object_id) {
+
+  unset($_SESSION[$object_id]);
 }
